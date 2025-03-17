@@ -68,7 +68,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
 
 
     ros::init(argc, argv, "leader");
-    BackgroundStatePublisher<DOF> state_publisher(wam, &hw);
+    BackgroundStatePublisher<DOF> state_publisher(pm.getExecutionManager(), wam, &hw);
 
     ToolFrameCb toolframeCb(&hw);
     barrett::systems::connect(wam.toolPose.output, toolframeCb.input);
