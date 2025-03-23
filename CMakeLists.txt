@@ -11,11 +11,11 @@ endif()
 find_package(catkin REQUIRED COMPONENTS
    roscpp
    std_msgs
+   sensor_msgs
    message_generation
 )
 
 add_message_files(
-   DIRECTORY msg
    FILES
    GravityTorque.msg
 )
@@ -23,8 +23,8 @@ add_message_files(
 generate_messages( DEPENDENCIES std_msgs)
 
 catkin_package(
-   INCLUDE_DIRS include
-   LIBRARIES ${PROJECT_NAME}
+   # INCLUDE_DIRS include
+   # LIBRARIES ${PROJECT_NAME}
    CATKIN_DEPENDS roscpp std_msgs sensor_msgs message_runtime
 )
 
@@ -42,9 +42,9 @@ if (BUILD_LEADER)
    add_executable(leader src/leader.cpp src/udp_handler.cpp)
    target_link_libraries(leader ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist Boost::system Boost::thread)
    target_compile_definitions(leader PRIVATE BUILD_LEADER)
-   add_dependencies(leader ${catkin_EXPORTED_TARGETS})
+   add_dependencies(leader ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 endif()
 
 add_executable(follower src/follower.cpp src/udp_handler.cpp)
 target_link_libraries(follower ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} Boost::system Boost::thread)
-add_dependencies(follower ${catkin_EXPORTED_TARGETS})
+add_dependencies(follower ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
