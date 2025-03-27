@@ -9,9 +9,8 @@
 #include <barrett/thread/abstract/mutex.h>
 #include <barrett/units.h>
 
-using boost::asio::ip::udp;
-
-template <size_t DOF> class Leader : public barrett::systems::System {
+template <size_t DOF>
+class Leader : public barrett::systems::System {
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
 
   public:
@@ -20,19 +19,28 @@ template <size_t DOF> class Leader : public barrett::systems::System {
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Leader(barrett::systems::ExecutionManager *em, haptic_wrist::HapticWrist *hw, char *remoteHost,
-                    int rec_port = 5554, int send_port = 5555, const std::string &sysName = "Leader")
-        : System(sysName), linked(false), theirJp(0.0), wamJPIn(this), wamJPOutput(this, &jpOutputValue),
-          udp_handler(remoteHost, send_port, rec_port), hw(hw), state(State::INIT) {
+    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, char* remoteHost,
+                    int rec_port = 5554, int send_port = 5555, const std::string& sysName = "Leader")
+        : System(sysName)
+        , theirJp(0.0)
+        , wamJPIn(this)
+        , wamJPOutput(this, &jpOutputValue)
+        , udp_handler(remoteHost, send_port, rec_port)
+        , hw(hw)
+        , state(State::INIT) {
 
         if (em != NULL) {
             em->startManaging(*this);
         }
     }
 
-    virtual ~Leader() { this->mandatoryCleanUp(); }
+    virtual ~Leader() {
+        this->mandatoryCleanUp();
+    }
 
-    bool isLinked() const { return state == State::LINKED; }
+    bool isLinked() const {
+        return state == State::LINKED;
+    }
     void tryLink() {
         BARRETT_SCOPED_LOCK(this->getEmMutex());
         state = State::LINKED;
@@ -43,7 +51,7 @@ template <size_t DOF> class Leader : public barrett::systems::System {
     }
 
   protected:
-    typename Output<jp_type>::Value *jpOutputValue;
+    typename Output<jp_type>::Value* jpOutputValue;
     int num_received;
     jp_type wamJP;
     jv_type wamJV;
@@ -54,9 +62,14 @@ template <size_t DOF> class Leader : public barrett::systems::System {
 
     virtual void operate() {
 
+        double j5_scale = 1.5;
+        double j7_scale = 1.5;
+
         wamJP = wamJPIn.getValue();
         haptic_wrist::jp_type wristJP = hw->getPosition();
         sendMsg << wamJP, wristJP;
+        sendMsg(4) = j5_scale * sendMsg(4);
+        sendMsg(6) = j7_scale * sendMsg(6);
 
         udp_handler.send(sendMsg);
 
@@ -66,37 +79,39 @@ template <size_t DOF> class Leader : public barrett::systems::System {
 
             theirJp = received_data->jp.template head<DOF>();
             theirWristJp = received_data->jp.template tail<3>();
+            theirWristJp(0) = theirWristJp(0) / j5_scale;
+            theirWristJp(2) = theirWristJp(2) / j7_scale;
         } else {
             if (state == State::LINKED) {
+                std::cout << "lost link" << std::endl;
                 state = State::UNLINKED;
             }
         }
 
         switch (state) {
-        case State::INIT:
-            // Used so haptic wirst holds on moveTo command
-            jpOutputValue->setData(&wamJP);
-            break;
-        case State::LINKED:
-            // Active teleop. Only the callee can transition to LINKED
-            hw->setPosition(theirWristJp);
-            jpOutputValue->setData(&theirJp);
-            break;
-        case State::UNLINKED:
-            // Changed to unlinked with either timeout or callee.
-            hw->setPosition(wristJP);
-            jpOutputValue->setData(&wamJP);
-            break;
+            case State::INIT:
+                // Used so haptic wirst holds on moveTo command
+                jpOutputValue->setData(&wamJP);
+                break;
+            case State::LINKED:
+                // Active teleop. Only the callee can transition to LINKED
+                hw->setPosition(theirWristJp);
+                jpOutputValue->setData(&theirJp);
+                break;
+            case State::UNLINKED:
+                // Changed to unlinked with either timeout or callee.
+                hw->setPosition(wristJP);
+                jpOutputValue->setData(&wamJP);
+                break;
         }
     }
 
-    bool linked;
     jp_type theirJp;
     haptic_wrist::jp_type theirWristJp;
 
   private:
     DISALLOW_COPY_AND_ASSIGN(Leader);
-    haptic_wrist::HapticWrist *hw;
+    haptic_wrist::HapticWrist* hw;
     std::mutex state_mutex;
     jp_type joint_positions;
     UDPHandler<DOF + 3> udp_handler;

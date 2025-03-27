@@ -8,38 +8,48 @@
 #include <barrett/thread/abstract/mutex.h>
 #include <barrett/units.h>
 
-using boost::asio::ip::udp;
-
-template <size_t DOF> class Follower : public barrett::systems::System {
+template <size_t DOF>
+class Follower : public barrett::systems::System {
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
 
   public:
     Input<jp_type> wamJPIn;
     Output<jp_type> wamJPOutput;
-    explicit Follower(barrett::systems::ExecutionManager *em, char *remoteHost,
-                          int rec_port = 5554, int send_port = 5555, const std::string &sysName = "Follower")
-        : System(sysName), linked(false), timed_out(true), theirJp(0.0), wamJPIn(this),
-          wamJPOutput(this, &jpOutputValue), udp_handler(remoteHost, send_port, rec_port) {
+
+    enum class State { INIT, LINKED, UNLINKED };
+
+    explicit Follower(barrett::systems::ExecutionManager* em, char* remoteHost, int rec_port = 5554,
+                      int send_port = 5555, const std::string& sysName = "Follower")
+        : System(sysName)
+        , theirJp(0.0)
+        , wamJPIn(this)
+        , wamJPOutput(this, &jpOutputValue)
+        , udp_handler(remoteHost, send_port, rec_port)
+        , state(State::INIT) {
 
         if (em != NULL) {
             em->startManaging(*this);
         }
     }
 
-    virtual ~Follower() { this->mandatoryCleanUp(); }
+    virtual ~Follower() {
+        this->mandatoryCleanUp();
+    }
 
-    bool isLinked() const { return linked; }
+    bool isLinked() const {
+        return state == State::LINKED;
+    }
     void tryLink() {
         BARRETT_SCOPED_LOCK(this->getEmMutex());
-
-        if (!timed_out) {
-            linked = true;
-        }
+        state = State::LINKED;
     }
-    void unlink() { linked = false; }
+    void unlink() {
+        BARRETT_SCOPED_LOCK(this->getEmMutex());
+        state = State::UNLINKED;
+    }
 
   protected:
-    typename Output<jp_type>::Value *jpOutputValue;
+    typename Output<jp_type>::Value* jpOutputValue;
     int num_received;
     jp_type wamJP;
     jv_type wamJV;
@@ -60,21 +70,28 @@ template <size_t DOF> class Follower : public barrett::systems::System {
         if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp;
-            timed_out = false;
         } else {
-            timed_out = true;
+            if (state == State::LINKED) {
+                std::cout << "lost link" << std::endl;
+                state = State::UNLINKED;
+            }
         }
 
-        if (!linked || timed_out) {
-            linked = false;
-            theirJp = wamJP;
+        switch (state) {
+            case State::INIT:
+                jpOutputValue->setData(&wamJP);
+                break;
+            case State::LINKED:
+                // Active teleop. Only the callee can transition to LINKED
+                jpOutputValue->setData(&theirJp);
+                break;
+            case State::UNLINKED:
+                // Changed to unlinked with either timeout or callee.
+                jpOutputValue->setData(&wamJP);
+                break;
         }
-
-        jpOutputValue->setData(&theirJp);
     }
 
-    bool linked;
-    bool timed_out;
     jp_type theirJp;
 
   private:
@@ -83,5 +100,5 @@ template <size_t DOF> class Follower : public barrett::systems::System {
     jp_type joint_positions;
     UDPHandler<DOF> udp_handler;
     const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(20);
+    State state;
 };
-
