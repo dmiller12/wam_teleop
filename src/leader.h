@@ -34,7 +34,7 @@ class Leader : public barrett::systems::System {
         , state(State::INIT) {
 
         kp << 600, 700, 250, 120;
-        kd << 10, 6, 3.3, 0.8;
+        kd << 30, 25, 15, 10;
 
         if (em != NULL) {
             em->startManaging(*this);
