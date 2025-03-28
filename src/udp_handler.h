@@ -12,9 +12,11 @@ template <size_t DOF>
 class UDPHandler {
 public:
     using jp_type = Eigen::Matrix<double, DOF, 1>;
+    using jv_type = Eigen::Matrix<double, DOF, 1>;
 
     struct ReceivedData {
         jp_type jp;
+        jp_type jv;
         std::chrono::steady_clock::time_point timestamp;
     };
 
@@ -23,7 +25,7 @@ public:
 
     void stop();
     boost::optional<ReceivedData> getLatestReceived();
-    void send(const jp_type& jp);
+    void send(const jp_type& jp, const jv_type& jv);
 
 private:
     std::string remote_host;
@@ -38,7 +40,8 @@ private:
     std::mutex state_mutex, send_mutex;
     std::condition_variable send_condition;
 
-    jp_type pending_send;
+    jp_type pending_send_jp;
+    jv_type pending_send_jv;
     boost::optional<ReceivedData> latest_received;
     bool new_data_available = false;
 

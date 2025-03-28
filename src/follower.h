@@ -14,6 +14,7 @@ class Follower : public barrett::systems::System {
 
   public:
     Input<jp_type> wamJPIn;
+    Input<jv_type> wamJVIn;
     Output<jp_type> wamJPOutput;
 
     enum class State { INIT, LINKED, UNLINKED };
@@ -23,6 +24,7 @@ class Follower : public barrett::systems::System {
         : System(sysName)
         , theirJp(0.0)
         , wamJPIn(this)
+        , wamJVIn(this)
         , wamJPOutput(this, &jpOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , state(State::INIT) {
@@ -50,20 +52,21 @@ class Follower : public barrett::systems::System {
 
   protected:
     typename Output<jp_type>::Value* jpOutputValue;
-    int num_received;
     jp_type wamJP;
     jv_type wamJV;
-    jt_type wamJT;
-    Eigen::Matrix<double, DOF, 1> sendMsg;
+    Eigen::Matrix<double, DOF, 1> sendJpMsg;
+    Eigen::Matrix<double, DOF, 1> sendJvMsg;
 
     using ReceivedData = typename UDPHandler<DOF>::ReceivedData;
 
     virtual void operate() {
 
         wamJP = wamJPIn.getValue();
-        sendMsg << wamJP;
+        wamJV = wamJVIn.getValue();
+        sendJpMsg << wamJP;
+        sendJvMsg << wamJV;
 
-        udp_handler.send(sendMsg);
+        udp_handler.send(sendJpMsg, sendJvMsg);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();

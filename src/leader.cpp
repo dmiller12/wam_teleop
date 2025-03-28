@@ -76,6 +76,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
 
     Leader<DOF> leader(pm.getExecutionManager(), &hw, argv[1], rec_port, send_port);
     systems::connect(wam.jpOutput, leader.wamJPIn);
+    systems::connect(wam.jvOutput, leader.wamJVIn);
 
     wam.gravityCompensate();
 
