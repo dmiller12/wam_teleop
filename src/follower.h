@@ -15,7 +15,7 @@ class Follower : public barrett::systems::System {
   public:
     Input<jp_type> wamJPIn;
     Input<jv_type> wamJVIn;
-    Output<jp_type> wamJPOutput;
+    Output<jt_type> wamJPOutput;
 
     enum class State { INIT, LINKED, UNLINKED };
 
@@ -27,12 +27,12 @@ class Follower : public barrett::systems::System {
         , control(0.0)
         , wamJPIn(this)
         , wamJVIn(this)
-        , wamJPOutput(this, &jpOutputValue)
+        , wamJPOutput(this, &jtOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , state(State::INIT) {
 
-        kp << 600, 700, 250, 120;
-        kd << 30, 25, 15, 10;
+        kp << 750, 1000, 400, 200, 10, 10, 2.5;
+        kd << 8.3, 8, 3.3, 0.8, 0.5, 0.5, 0.05;
 
         if (em != NULL) {
             em->startManaging(*this);
