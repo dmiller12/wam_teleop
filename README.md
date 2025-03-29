@@ -23,9 +23,10 @@ You may need to modify the bus port in `config/leader.conf` and `config/follower
 
 Each node has the same command line options:
 ```bash
-rosrun wam_teleop leader <remoteHost> <recPort> <sendPort>
-rosrun wam_teleop follower <remoteHost> <recPort> <sendPort>
+rosrun wam_teleop leader [remoteHost] [recPort] [sendPort]
+rosrun wam_teleop follower [remoteHost] [recPort] [sendPort]
 ```
+Use `-h` or `--help` to see options description.
 
 ### Example
 Start the master node with: `roscore`.

@@ -27,12 +27,18 @@
 using namespace barrett;
 using detail::waitForEnter;
 
-bool validate_args(int argc, char **argv) {
-    if (argc != 3 && argc != 4) {
-        printf("Usage: %s <remoteHost> <recPort> [sendPort]\n", argv[0]);
-        printf("    sendPort: If not provided sendPort = recPort -1\n");
+void printUsage(const std::string& programName, const std::string& remoteHost, int recPort, int sendPort) {
+    std::cout << "Usage: " << programName << " [remoteHost] [recPort] [sendPort]" << std::endl;
+    std::cout << "       Defaults: remoteHost=" << remoteHost << ", recPort=" << recPort << ", sendPort=" << sendPort
+              << std::endl;
+    std::cout << "       -h or --help: Display this help message." << std::endl;
+}
 
-        return false;
+bool validate_args(int argc, char** argv) {
+
+    if ((argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) || (argc > 4)) {
+        printUsage(argv[0], "127.0.0.1", 5554, 5555);
+        return 0;
     }
 
     return true;
@@ -56,12 +62,18 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
         return false;
     }
 
-    int rec_port = atoi(argv[2]);
-    int send_port;
-    if (argc == 3) {
-        send_port = rec_port - 1;
-    } else {
-        send_port = atoi(argv[3]);
+    std::string remoteHost = "127.0.0.1";
+    int rec_port = 5554;
+    int send_port = 5555;
+
+    if (argc >= 2) {
+        remoteHost = argv[1];
+    }
+    if (argc >= 3) {
+        rec_port = std::atoi(argv[2]);
+    }
+    if (argc >= 4) {
+        send_port = std::atoi(argv[3]);
     }
 
     ros::init(argc, argv, "follower");
