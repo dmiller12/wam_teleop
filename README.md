@@ -13,7 +13,7 @@ or set the option to `OFF` in `CMakeLists.txt`:
 ```bash
 option(BUILD_LEADER "Build leader executable" OFF)
 ```
-To build the leader node, the haptic_wrist library is required as a dependency, build and install instructions can be found here.
+To build the leader node, the haptic_wrist library is required as a dependency, build and install instructions can be found [here](https://github.com/dmiller12/libhaptic_wrist).
 
 ## Run Instructions
 
