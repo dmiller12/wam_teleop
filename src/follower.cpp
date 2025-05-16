@@ -7,6 +7,7 @@
  *      Author: Brian Zenowich
  */
 
+#include "external_torque.h"
 #include <iostream>
 #include <string>
 
@@ -67,7 +68,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     int send_port = 5555;
 
     if (argc >= 2) {
-        remoteHost = argv[1];
+        remoteHost = std::string(argv[1]);
     }
     if (argc >= 3) {
         rec_port = std::atoi(argv[2]);
@@ -79,9 +80,21 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     ros::init(argc, argv, "follower");
     BackgroundStatePublisher<DOF> state_publisher(pm.getExecutionManager(), wam);
 
-    Follower<DOF> follower(pm.getExecutionManager(), argv[1], rec_port, send_port);
+    ExternalTorque<DOF> externalTorque(pm.getExecutionManager());
+    systems::connect(wam.gravity.output, externalTorque.wamGravityIn);
+    systems::connect(wam.jtSum.output, externalTorque.wamTorqueSumIn);
+
+    barrett::systems::FirstOrderFilter<jt_type> extFilter;
+    jt_type omega_p(180.0);
+    extFilter.setLowPass(omega_p);
+    pm.getExecutionManager()->startManaging(extFilter);
+
+    systems::connect(externalTorque.wamExternalTorqueOut, extFilter.input);
+
+    Follower<DOF> follower(pm.getExecutionManager(), remoteHost, rec_port, send_port);
     systems::connect(wam.jpOutput, follower.wamJPIn);
     systems::connect(wam.jvOutput, follower.wamJVIn);
+    systems::connect(extFilter.output, follower.extTorqueIn);
 
     wam.gravityCompensate();
 
@@ -105,6 +118,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
                 waitForEnter();
                 follower.tryLink();
                 wam.trackReferenceSignal(follower.wamJPOutput);
+                systems::forceConnect(wam.jtSum.output, externalTorque.wamTorqueSumIn);
 
                 btsleep(0.1); // wait an execution cycle or two
                 if (follower.isLinked()) {

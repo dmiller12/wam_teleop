@@ -15,11 +15,12 @@ class Follower : public barrett::systems::System {
   public:
     Input<jp_type> wamJPIn;
     Input<jv_type> wamJVIn;
+    Input<jt_type> extTorqueIn;
     Output<jt_type> wamJPOutput;
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Follower(barrett::systems::ExecutionManager* em, char* remoteHost, int rec_port = 5554,
+    explicit Follower(barrett::systems::ExecutionManager* em, const std::string& remoteHost, int rec_port = 5554,
                       int send_port = 5555, const std::string& sysName = "Follower")
         : System(sysName)
         , theirJp(0.0)
@@ -27,6 +28,7 @@ class Follower : public barrett::systems::System {
         , control(0.0)
         , wamJPIn(this)
         , wamJVIn(this)
+        , extTorqueIn(this)
         , wamJPOutput(this, &jtOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , state(State::INIT) {
@@ -59,8 +61,10 @@ class Follower : public barrett::systems::System {
     typename Output<jt_type>::Value* jtOutputValue;
     jp_type wamJP;
     jv_type wamJV;
+    jt_type extTorque;
     Eigen::Matrix<double, DOF, 1> sendJpMsg;
     Eigen::Matrix<double, DOF, 1> sendJvMsg;
+    Eigen::Matrix<double, DOF, 1> sendExtTorqueMsg;
 
     using ReceivedData = typename UDPHandler<DOF>::ReceivedData;
 
@@ -68,10 +72,10 @@ class Follower : public barrett::systems::System {
 
         wamJP = wamJPIn.getValue();
         wamJV = wamJVIn.getValue();
+        extTorque = extTorqueIn.getValue();
+
         sendJpMsg << wamJP;
         sendJvMsg << wamJV;
-
-        udp_handler.send(sendJpMsg, sendJvMsg);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
@@ -102,6 +106,10 @@ class Follower : public barrett::systems::System {
                 jtOutputValue->setData(&control);
                 break;
         }
+
+        sendExtTorqueMsg << control;
+
+        udp_handler.send(sendJpMsg, sendJvMsg, sendExtTorqueMsg);
     }
 
     jp_type theirJp;

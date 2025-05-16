@@ -51,7 +51,8 @@ void UDPHandler<DOF>::receiveLoop() {
     boost::asio::ip::udp::endpoint sender_endpoint;
     jp_type received_jp;
     jv_type received_jv;
-    char buffer[sizeof(double) * DOF * 2];
+    jt_type received_extTorque;
+    char buffer[sizeof(double) * DOF * 3];
 
     while (!stop_threads) {
         boost::system::error_code ec;
@@ -62,21 +63,23 @@ void UDPHandler<DOF>::receiveLoop() {
 
         std::memcpy(received_jp.data(), buffer, sizeof(double) * DOF);
         std::memcpy(received_jv.data(), buffer + sizeof(double) * DOF, sizeof(double) * DOF);
+        std::memcpy(received_extTorque.data(), buffer + 2*(sizeof(double) * DOF), sizeof(double) * DOF);
 
         {
             std::lock_guard<std::mutex> lock(state_mutex);
-            latest_received = ReceivedData{received_jp, received_jv, std::chrono::steady_clock::now()};
+            latest_received = ReceivedData{received_jp, received_jv, received_extTorque, std::chrono::steady_clock::now()};
         }
     }
     recv_socket.close();
 }
 
 template <size_t DOF>
-void UDPHandler<DOF>::send(const jp_type& jp, const jv_type& jv) {
+void UDPHandler<DOF>::send(const jp_type& jp, const jv_type& jv, const jt_type& extTorque) {
     {
         std::lock_guard<std::mutex> lock(send_mutex);
         pending_send_jp = jp;
         pending_send_jv = jv;
+        pending_send_extTorque = extTorque;
         new_data_available = true;
     }
     send_condition.notify_one();
@@ -96,11 +99,13 @@ void UDPHandler<DOF>::sendLoop() {
         new_data_available = false;
         jp_type data_to_send_jp = pending_send_jp;
         jp_type data_to_send_jv = pending_send_jv;
+        jt_type data_to_send_extTorque = pending_send_extTorque;
         lock.unlock();
 
-        char buffer[sizeof(double) * DOF * 2];
+        char buffer[sizeof(double) * DOF * 3];
         std::memcpy(buffer, data_to_send_jp.data(), sizeof(double) * DOF);
         std::memcpy(buffer + sizeof(double) * DOF, data_to_send_jv.data(), sizeof(double) * DOF);
+        std::memcpy(buffer + 2*(sizeof(double) * DOF), data_to_send_extTorque.data(), sizeof(double) * DOF);
 
         boost::system::error_code ec;
         send_socket.send_to(boost::asio::buffer(buffer, sizeof(buffer)), remote_endpoint, 0, ec);

@@ -16,6 +16,7 @@
 #include "background_state_publisher.h"
 #include "leader.h"
 #include "tool_frame_cb.h"
+#include "external_torque.h"
 
 using namespace barrett;
 using detail::waitForEnter;
@@ -56,7 +57,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     int send_port = 5554;
 
     if (argc >= 2) {
-        remoteHost = argv[1];
+        remoteHost = std::string(argv[1]);
     }
     if (argc >= 3) {
         rec_port = std::atoi(argv[2]);
@@ -73,12 +74,24 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     BackgroundStatePublisher<DOF> state_publisher(pm.getExecutionManager(), wam, &hw);
 
     ToolFrameCb toolframeCb(&hw);
-    barrett::systems::connect(wam.toolPose.output, toolframeCb.input);
+    systems::connect(wam.toolPose.output, toolframeCb.input);
     pm.getExecutionManager()->startManaging(toolframeCb);
 
-    Leader<DOF> leader(pm.getExecutionManager(), &hw, argv[1], rec_port, send_port);
+    ExternalTorque<DOF> externalTorque(pm.getExecutionManager());
+    systems::connect(wam.gravity.output, externalTorque.wamGravityIn);
+    systems::connect(wam.jtSum.output, externalTorque.wamTorqueSumIn);
+
+    barrett::systems::FirstOrderFilter<jt_type> extFilter;
+    jt_type omega_p(180.0);
+    extFilter.setLowPass(omega_p);
+    pm.getExecutionManager()->startManaging(extFilter);
+
+    systems::connect(externalTorque.wamExternalTorqueOut, extFilter.input);
+
+    Leader<DOF> leader(pm.getExecutionManager(), &hw, remoteHost, rec_port, send_port);
     systems::connect(wam.jpOutput, leader.wamJPIn);
     systems::connect(wam.jvOutput, leader.wamJVIn);
+    systems::connect(extFilter.output, leader.extTorqueIn);
 
     wam.gravityCompensate();
 
