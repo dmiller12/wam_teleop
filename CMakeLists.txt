@@ -38,7 +38,7 @@ add_definitions(${BARRETT_DEFINITIONS})
 find_package(Boost REQUIRED COMPONENTS system thread)
 
 if (BUILD_LEADER) 
-   find_package(haptic_wrist REQUIRED)
+   find_package(haptic_wrist 2.0 REQUIRED)
    add_executable(leader src/leader.cpp src/udp_handler.cpp)
    target_link_libraries(leader ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist Boost::system Boost::thread)
    target_compile_definitions(leader PRIVATE BUILD_LEADER)
