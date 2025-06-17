@@ -56,7 +56,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     int send_port = 5554;
 
     if (argc >= 2) {
-        remoteHost = argv[1];
+        remoteHost = std::string(argv[1]);
     }
     if (argc >= 3) {
         rec_port = std::atoi(argv[2]);
@@ -76,7 +76,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     barrett::systems::connect(wam.toolPose.output, toolframeCb.input);
     pm.getExecutionManager()->startManaging(toolframeCb);
 
-    Leader<DOF> leader(pm.getExecutionManager(), &hw, argv[1], rec_port, send_port);
+    Leader<DOF> leader(pm.getExecutionManager(), &hw, remoteHost, rec_port, send_port);
     systems::connect(wam.jpOutput, leader.wamJPIn);
     systems::connect(wam.jvOutput, leader.wamJVIn);
 

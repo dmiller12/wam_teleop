@@ -19,7 +19,7 @@ class Follower : public barrett::systems::System {
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Follower(barrett::systems::ExecutionManager* em, char* remoteHost, int rec_port = 5554,
+    explicit Follower(barrett::systems::ExecutionManager* em, const std::string& remoteHost, int rec_port = 5554,
                       int send_port = 5555, const std::string& sysName = "Follower")
         : System(sysName)
         , theirJp(0.0)

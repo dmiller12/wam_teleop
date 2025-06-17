@@ -20,7 +20,7 @@ class Leader : public barrett::systems::System {
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, char* remoteHost,
+    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, const std::string& remoteHost,
                     int rec_port = 5554, int send_port = 5555, const std::string& sysName = "Leader")
         : System(sysName)
         , theirJp(0.0)
