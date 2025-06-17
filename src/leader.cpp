@@ -66,7 +66,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     }
 
     haptic_wrist::HapticWrist hw;
-    hw.gravityCompensate(false);
+    hw.gravityCompensate(true);
     hw.run();
 
     ros::init(argc, argv, "leader");

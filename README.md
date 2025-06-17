@@ -57,4 +57,4 @@ To turn off, it is recommended to go through the following procedure to ensure p
 2) On the leader, press `x` to exit the loop.
 3) Shift idle the leader
 4) Repeat for follower. Press `x` to exit the loop
-5) Shift idle the follower.
+5) Shift idle the follower
