@@ -50,7 +50,6 @@ template <size_t DOF>
 void UDPHandler<DOF>::receiveLoop() {
     boost::asio::ip::udp::endpoint sender_endpoint;
     jp_type received_jp;
-    jv_type received_jv;
     char buffer[sizeof(double) * DOF * 2];
 
     while (!stop_threads) {
@@ -61,22 +60,20 @@ void UDPHandler<DOF>::receiveLoop() {
             continue;
 
         std::memcpy(received_jp.data(), buffer, sizeof(double) * DOF);
-        std::memcpy(received_jv.data(), buffer + sizeof(double) * DOF, sizeof(double) * DOF);
 
         {
             std::lock_guard<std::mutex> lock(state_mutex);
-            latest_received = ReceivedData{received_jp, received_jv, std::chrono::steady_clock::now()};
+            latest_received = ReceivedData{received_jp, std::chrono::steady_clock::now()};
         }
     }
     recv_socket.close();
 }
 
 template <size_t DOF>
-void UDPHandler<DOF>::send(const jp_type& jp, const jv_type& jv) {
+void UDPHandler<DOF>::send(const jp_type& jp) {
     {
         std::lock_guard<std::mutex> lock(send_mutex);
         pending_send_jp = jp;
-        pending_send_jv = jv;
         new_data_available = true;
     }
     send_condition.notify_one();
@@ -95,12 +92,10 @@ void UDPHandler<DOF>::sendLoop() {
 
         new_data_available = false;
         jp_type data_to_send_jp = pending_send_jp;
-        jp_type data_to_send_jv = pending_send_jv;
         lock.unlock();
 
-        char buffer[sizeof(double) * DOF * 2];
+        char buffer[sizeof(double) * DOF];
         std::memcpy(buffer, data_to_send_jp.data(), sizeof(double) * DOF);
-        std::memcpy(buffer + sizeof(double) * DOF, data_to_send_jv.data(), sizeof(double) * DOF);
 
         boost::system::error_code ec;
         send_socket.send_to(boost::asio::buffer(buffer, sizeof(buffer)), remote_endpoint, 0, ec);
