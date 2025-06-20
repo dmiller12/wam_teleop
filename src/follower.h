@@ -100,7 +100,7 @@ class Follower : public barrett::systems::System {
     std::mutex state_mutex;
     jp_type joint_positions;
     UDPHandler<DOF> udp_handler;
-    const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(20);
+    const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(50);
     State state;
 
 };

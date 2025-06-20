@@ -50,7 +50,7 @@ template <size_t DOF>
 void UDPHandler<DOF>::receiveLoop() {
     boost::asio::ip::udp::endpoint sender_endpoint;
     jp_type received_jp;
-    char buffer[sizeof(double) * DOF * 2];
+    char buffer[sizeof(double) * DOF];
 
     while (!stop_threads) {
         boost::system::error_code ec;
