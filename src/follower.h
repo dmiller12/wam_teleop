@@ -15,7 +15,9 @@ class Follower : public barrett::systems::System {
   public:
     Input<jp_type> wamJPIn;
     Input<jv_type> wamJVIn;
-    Output<jt_type> wamJPOutput;
+    Input<Eigen::Quaterniond> wamOrientationIn;
+    Output<jt_type> wamJTOutput;
+    Output<Eigen::Quaterniond> wristOrientationOutput;
 
     enum class State { INIT, LINKED, UNLINKED };
 
@@ -27,7 +29,9 @@ class Follower : public barrett::systems::System {
         , control(0.0)
         , wamJPIn(this)
         , wamJVIn(this)
-        , wamJPOutput(this, &jtOutputValue)
+        , wamOrientationIn(this)
+        , wamJTOutput(this, &jtOutputValue)
+        , wristOrientationOutput(this, &orientationOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , state(State::INIT) {
 
@@ -57,8 +61,10 @@ class Follower : public barrett::systems::System {
 
   protected:
     typename Output<jt_type>::Value* jtOutputValue;
+    typename Output<Eigen::Quaterniond>::Value* orientationOutputValue;
     jp_type wamJP;
     jv_type wamJV;
+    Eigen::Quaterniond wristOrientation;
     Eigen::Matrix<double, DOF, 1> sendJpMsg;
     Eigen::Matrix<double, DOF, 1> sendJvMsg;
 
@@ -68,10 +74,11 @@ class Follower : public barrett::systems::System {
 
         wamJP = wamJPIn.getValue();
         wamJV = wamJVIn.getValue();
+        wristOrientation = wamOrientationIn.getValue();
         sendJpMsg << wamJP;
         sendJvMsg << wamJV;
 
-        udp_handler.send(sendJpMsg, sendJvMsg);
+        udp_handler.send(sendJpMsg, sendJvMsg, wristOrientation);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
@@ -79,6 +86,7 @@ class Follower : public barrett::systems::System {
 
             theirJp = received_data->jp;
             theirJv = received_data->jv;
+            theirOrientation = received_data->orientation;
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -90,22 +98,26 @@ class Follower : public barrett::systems::System {
             case State::INIT:
                 control.setZero();
                 jtOutputValue->setData(&control);
+                orientationOutputValue->setData(&wristOrientation);
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
                 jtOutputValue->setData(&control);
+                orientationOutputValue->setData(&theirOrientation);
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
                 control.setZero();
                 jtOutputValue->setData(&control);
+                orientationOutputValue->setData(&wristOrientation);
                 break;
         }
     }
 
     jp_type theirJp;
     jp_type theirJv;
+    Eigen::Quaterniond theirOrientation;
     jt_type control;
 
   private:

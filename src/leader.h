@@ -76,23 +76,27 @@ class Leader : public barrett::systems::System {
         wamJV = wamJVIn.getValue();
         haptic_wrist::jp_type wristJP = hw->getPosition();
         haptic_wrist::jp_type wristJV = hw->getVelocity();
+        Eigen::Quaterniond hwOrientation  = hw->getOrientation();
+        // Eigen::AngleAxisd angle_axis(hwOrientation);
+        //
+        // std::cout << "Angle: " << angle_axis.angle()
+        //           << " rad, Axis: [" << angle_axis.axis().transpose()
+        //           << "]" << std::endl;
+
         sendJpMsg << wamJP, wristJP;
         sendJvMsg << wamJV, wristJV;
         sendJpMsg(4) = j5_scale * sendJpMsg(4);
         sendJpMsg(6) = j7_scale * sendJpMsg(6);
 
-        udp_handler.send(sendJpMsg, sendJvMsg);
+        udp_handler.send(sendJpMsg, sendJvMsg, hwOrientation);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
         if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp.template head<DOF>();
-            theirWristJp = received_data->jp.template tail<3>();
-            theirWristJp(0) = theirWristJp(0) / j5_scale;
-            theirWristJp(2) = theirWristJp(2) / j7_scale;
-
             theirJv = received_data->jv.template head<DOF>();
+            theirOrientation = received_data->orientation;
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -108,13 +112,13 @@ class Leader : public barrett::systems::System {
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
-                hw->setPosition(theirWristJp);
+                hw->setTarget(theirOrientation);
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
                 jtOutputValue->setData(&control);
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
-                hw->setPosition(wristJP);
+                hw->setTarget(hwOrientation);
                 control.setZero();
                 jtOutputValue->setData(&control);
                 break;
@@ -124,6 +128,7 @@ class Leader : public barrett::systems::System {
     jp_type theirJp;
     jp_type theirJv;
     jt_type control;
+    Eigen::Quaterniond theirOrientation;
     haptic_wrist::jp_type theirWristJp;
 
   private:
