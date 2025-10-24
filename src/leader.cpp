@@ -45,7 +45,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
         SYNC_POS[0] = 0.0;
         SYNC_POS[1] = -1.5;
         SYNC_POS[2] = 0.0;
-        SYNC_POS[3] = 2.7;
+        SYNC_POS[3] = 1.5;
 
     } else {
         printf("Error: Only 4 DOF wam supported\n");
