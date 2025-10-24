@@ -1,6 +1,8 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <iostream>
+#include <cmath>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -94,24 +96,30 @@ class Follower : public barrett::systems::System {
             }
         }
 
+        Eigen::Quaterniond* command_orientation_ptr = nullptr;
+
         switch (state) {
             case State::INIT:
                 control.setZero();
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&wristOrientation);
+                command_orientation_ptr = &wristOrientation;
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&theirOrientation);
+                command_orientation_ptr = &theirOrientation;
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
                 control.setZero();
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&wristOrientation);
+                command_orientation_ptr = &wristOrientation;
                 break;
+        }
+
+        jtOutputValue->setData(&control);
+        if (command_orientation_ptr != nullptr) {
+            orientationOutputValue->setData(command_orientation_ptr);
+            Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
+            printOrientation("Follower", command_quat);
         }
     }
 
@@ -136,4 +144,12 @@ class Follower : public barrett::systems::System {
         jt_type vel_term = kd.asDiagonal() * (ref_vel - cur_vel);
         return pos_term + vel_term;
     };
+
+    static void printOrientation(const std::string& label, const Eigen::Quaterniond& quat) {
+        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+        Eigen::Matrix3d R = quat.toRotationMatrix();
+        Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
+        Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
+        std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
+    }
 };

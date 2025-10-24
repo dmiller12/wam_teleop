@@ -2,6 +2,8 @@
 #include <haptic_wrist/haptic_wrist.h>
 
 #include <boost/asio.hpp>
+#include <iostream>
+#include <cmath>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -104,25 +106,28 @@ class Leader : public barrett::systems::System {
             }
         }
 
+        Eigen::Quaterniond command_orientation;
+
         switch (state) {
             case State::INIT:
                 // Used so haptic wirst holds on moveTo command
                 control.setZero();
-                jtOutputValue->setData(&control);
+                command_orientation = hwOrientation.normalized();
                 break;
             case State::LINKED:
-                // Active teleop. Only the callee can transition to LINKED
-                hw->setTarget(theirOrientation);
+                command_orientation = theirOrientation.normalized();
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
-                jtOutputValue->setData(&control);
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
-                hw->setTarget(hwOrientation);
                 control.setZero();
-                jtOutputValue->setData(&control);
+                command_orientation = hwOrientation.normalized();
                 break;
         }
+
+        hw->setTarget(command_orientation);
+        jtOutputValue->setData(&control);
+        printOrientation("Leader", command_orientation);
     }
 
     jp_type theirJp;
@@ -148,4 +153,13 @@ class Leader : public barrett::systems::System {
         jt_type vel_term = kd.asDiagonal() * (ref_vel - cur_vel);
         return pos_term + vel_term;
     };
+
+    static void printOrientation(const std::string& label, const Eigen::Quaterniond& quat) {
+        Eigen::Quaterniond normalized = quat.normalized();
+        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+        Eigen::Matrix3d R = normalized.toRotationMatrix();
+        Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
+        Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
+        std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
+    }
 };
