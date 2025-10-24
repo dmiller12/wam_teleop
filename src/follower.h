@@ -3,6 +3,7 @@
 #include <boost/asio.hpp>
 #include <iostream>
 #include <cmath>
+#include <Eigen/Geometry>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -83,12 +84,14 @@ class Follower : public barrett::systems::System {
         udp_handler.send(sendJpMsg, sendJvMsg, wristOrientation);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
+        bool has_remote_orientation = false;
         auto now = std::chrono::steady_clock::now();
         if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp;
             theirJv = received_data->jv;
             theirOrientation = received_data->orientation;
+            has_remote_orientation = true;
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -118,13 +121,19 @@ class Follower : public barrett::systems::System {
         jtOutputValue->setData(&control);
         if (command_orientation_ptr != nullptr) {
             orientationOutputValue->setData(command_orientation_ptr);
-            Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
+            Eigen::Quaterniond follower_quat = wristOrientation.normalized();
             if (state == State::LINKED) {
+                Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
                 printOrientation("Leader", "target", command_quat);
-                Eigen::Quaterniond follower_quat = wristOrientation.normalized();
                 printOrientation("Follower", "actual", follower_quat);
+                printAlignmentError(command_quat, follower_quat);
+            } else if (has_remote_orientation) {
+                Eigen::Quaterniond leader_preview = theirOrientation.normalized();
+                printOrientation("Leader", "preview", leader_preview);
+                printOrientation("Follower", "current", follower_quat);
+                printAlignmentError(leader_preview, follower_quat);
             } else {
-                printOrientation("Follower", "target", command_quat);
+                printOrientation("Follower", "current", follower_quat);
             }
         }
     }
@@ -159,5 +168,15 @@ class Follower : public barrett::systems::System {
         Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
         std::cout << "[" << label << "] Wrist " << measurement_type << " RPY (deg): " << rpy_deg.transpose()
                   << std::endl;
+    }
+
+    static void printAlignmentError(const Eigen::Quaterniond& target, const Eigen::Quaterniond& actual) {
+        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+        Eigen::Quaterniond delta = target.conjugate() * actual;
+        delta.normalize();
+        Eigen::AngleAxisd aa(delta);
+        double angle_error_deg = aa.angle() * kRadToDeg;
+        std::cout << "[Alignment] Angle error (deg): " << angle_error_deg << " Axis: [" << aa.axis().transpose()
+                  << "]" << std::endl;
     }
 };
