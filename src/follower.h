@@ -119,7 +119,13 @@ class Follower : public barrett::systems::System {
         if (command_orientation_ptr != nullptr) {
             orientationOutputValue->setData(command_orientation_ptr);
             Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
-            printOrientation("Follower", command_quat);
+            if (state == State::LINKED) {
+                printOrientation("Leader", "target", command_quat);
+                Eigen::Quaterniond follower_quat = wristOrientation.normalized();
+                printOrientation("Follower", "actual", follower_quat);
+            } else {
+                printOrientation("Follower", "target", command_quat);
+            }
         }
     }
 
@@ -145,11 +151,13 @@ class Follower : public barrett::systems::System {
         return pos_term + vel_term;
     };
 
-    static void printOrientation(const std::string& label, const Eigen::Quaterniond& quat) {
+    static void printOrientation(const std::string& label, const std::string& measurement_type,
+                                 const Eigen::Quaterniond& quat) {
         constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
         Eigen::Matrix3d R = quat.toRotationMatrix();
         Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
         Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
-        std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
+        std::cout << "[" << label << "] Wrist " << measurement_type << " RPY (deg): " << rpy_deg.transpose()
+                  << std::endl;
     }
 };
