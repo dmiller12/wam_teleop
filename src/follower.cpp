@@ -73,9 +73,9 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     jp_type SYNC_POS; // the position each WAM should move to before linking
     if (DOF == 7) {
         SYNC_POS[0] = 0.0;
-        SYNC_POS[1] = -1.5;
+        SYNC_POS[1] = -1.57;
         SYNC_POS[2] = 0.0;
-        SYNC_POS[3] = 1.5;
+        SYNC_POS[3] = 1.57;
         SYNC_POS[4] = 0.0;
         SYNC_POS[5] = 0.0;
         SYNC_POS[6] = 0.0;
