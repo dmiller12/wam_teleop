@@ -127,11 +127,15 @@ class Follower : public barrett::systems::System {
                 printOrientation("Leader", "target", command_quat);
                 printOrientation("Follower", "actual", follower_quat);
                 printAlignmentError(command_quat, follower_quat);
+                printJointPositions("Leader", theirJp);
+                printJointPositions("Follower", wamJP);
             } else if (has_remote_orientation) {
                 Eigen::Quaterniond leader_preview = theirOrientation.normalized();
                 printOrientation("Leader", "preview", leader_preview);
                 printOrientation("Follower", "current", follower_quat);
                 printAlignmentError(leader_preview, follower_quat);
+                printJointPositions("Leader", theirJp);
+                printJointPositions("Follower", wamJP);
             } else {
                 printOrientation("Follower", "current", follower_quat);
             }
@@ -178,5 +182,10 @@ class Follower : public barrett::systems::System {
         double angle_error_deg = aa.angle() * kRadToDeg;
         std::cout << "[Alignment] Angle error (deg): " << angle_error_deg << " Axis: [" << aa.axis().transpose()
                   << "]" << std::endl;
+    }
+
+    static void printJointPositions(const std::string& label, const jp_type& joints) {
+        Eigen::Matrix<double, 4, 1> first_four = joints.template head<4>();
+        std::cout << "[" << label << "] Arm joints 1-4 (rad): " << first_four.transpose() << std::endl;
     }
 };
