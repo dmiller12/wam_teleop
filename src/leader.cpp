@@ -42,7 +42,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
 
     jp_type SYNC_POS; // the position each WAM should move to before linking
     if (DOF == 4) {
-        SYNC_POS[0] = 0.0;
+        SYNC_POS[0] = -0.4;
         SYNC_POS[1] = -1.57;
         SYNC_POS[2] = 0.0;
         SYNC_POS[3] = 0.0;
@@ -66,7 +66,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     }
 
     haptic_wrist::HapticWrist hw;
-    hw.gravityCompensate(true);
+    hw.gravityCompensate(false);
     hw.run();
 
     ros::init(argc, argv, "leader");
@@ -97,7 +97,9 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
                     leader.unlink();
                 } else {
                     wam.moveTo(SYNC_POS);
-                    hw.moveTo({0, 0, 0, 0});
+                    haptic_wrist::jp_type wrist_sync; 
+                    wrist_sync << 0.0, 0.0, 0.0, 0.0; 
+                    hw.moveTo(wrist_sync);
 
                     printf("Press [Enter] to link with the other WAM.");
                     waitForEnter();
