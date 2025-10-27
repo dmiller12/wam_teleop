@@ -45,7 +45,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
         SYNC_POS[0] = 0.0;
         SYNC_POS[1] = -1.5;
         SYNC_POS[2] = 0.0;
-        SYNC_POS[3] = 2.7;
+        SYNC_POS[3] = 1.57;
 
     } else {
         printf("Error: Only 4 DOF wam supported\n");
@@ -97,7 +97,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
                     leader.unlink();
                 } else {
                     wam.moveTo(SYNC_POS);
-                    hw.moveTo({-M_PI / 2.0, -M_PI / 2.0, 0});
+                    hw.moveTo({0.0, 0.0, 0.0});
 
                     printf("Press [Enter] to link with the other WAM.");
                     waitForEnter();

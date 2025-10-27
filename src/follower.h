@@ -1,6 +1,9 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <Eigen/Geometry>
+#include <cmath>
+#include <iostream>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -81,12 +84,14 @@ class Follower : public barrett::systems::System {
         udp_handler.send(sendJpMsg, sendJvMsg, wristOrientation);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
+        bool has_remote_orientation = false;
         auto now = std::chrono::steady_clock::now();
         if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp;
             theirJv = received_data->jv;
             theirOrientation = received_data->orientation;
+            has_remote_orientation = true;
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -94,24 +99,46 @@ class Follower : public barrett::systems::System {
             }
         }
 
+        Eigen::Quaterniond* command_orientation_ptr = nullptr;
+
         switch (state) {
             case State::INIT:
                 control.setZero();
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&wristOrientation);
+                command_orientation_ptr = &wristOrientation;
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&theirOrientation);
+                command_orientation_ptr = &theirOrientation;
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
                 control.setZero();
-                jtOutputValue->setData(&control);
-                orientationOutputValue->setData(&wristOrientation);
+                command_orientation_ptr = &wristOrientation;
                 break;
+        }
+
+        jtOutputValue->setData(&control);
+        if (command_orientation_ptr != nullptr) {
+            orientationOutputValue->setData(command_orientation_ptr);
+            Eigen::Quaterniond follower_quat = wristOrientation.normalized();
+            if (state == State::LINKED) {
+                Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
+                printOrientation("Leader", "target", command_quat);
+                printOrientation("Follower", "actual", follower_quat);
+                printAlignmentError(command_quat, follower_quat);
+                printJointPositions("Leader", theirJp);
+                printJointPositions("Follower", wamJP);
+            } else if (has_remote_orientation) {
+                Eigen::Quaterniond leader_preview = theirOrientation.normalized();
+                printOrientation("Leader", "preview", leader_preview);
+                printOrientation("Follower", "current", follower_quat);
+                printAlignmentError(leader_preview, follower_quat);
+                printJointPositions("Leader", theirJp);
+                printJointPositions("Follower", wamJP);
+            } else {
+                printOrientation("Follower", "current", follower_quat);
+            }
         }
     }
 
@@ -136,4 +163,29 @@ class Follower : public barrett::systems::System {
         jt_type vel_term = kd.asDiagonal() * (ref_vel - cur_vel);
         return pos_term + vel_term;
     };
+
+    static void printOrientation(const std::string& label, const std::string& measurement_type,
+                                 const Eigen::Quaterniond& quat) {
+        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+        Eigen::Matrix3d R = quat.toRotationMatrix();
+        Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
+        Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
+        std::cout << "[" << label << "] Wrist " << measurement_type << " RPY (deg): " << rpy_deg.transpose()
+                  << std::endl;
+    }
+
+    static void printAlignmentError(const Eigen::Quaterniond& target, const Eigen::Quaterniond& actual) {
+        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+        Eigen::Quaterniond delta = target.conjugate() * actual;
+        delta.normalize();
+        Eigen::AngleAxisd aa(delta);
+        double angle_error_deg = aa.angle() * kRadToDeg;
+        std::cout << "[Alignment] Angle error (deg): " << angle_error_deg << " Axis: [" << aa.axis().transpose()
+                  << "]" << std::endl;
+    }
+
+    static void printJointPositions(const std::string& label, const jp_type& joints) {
+        Eigen::Matrix<double, 4, 1> first_four = joints.template head<4>();
+        std::cout << "[" << label << "] Arm joints 1-4 (rad): " << first_four.transpose() << std::endl;
+    }
 };
