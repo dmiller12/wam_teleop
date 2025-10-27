@@ -98,6 +98,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
                 } else {
                     wam.moveTo(SYNC_POS);
                     hw.moveTo({0.0, 0.0, 0.0});
+                    hw.moveTo({0.0, 0.0, 0.0});
 
                     printf("Press [Enter] to link with the other WAM.");
                     waitForEnter();
