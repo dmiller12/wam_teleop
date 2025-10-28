@@ -99,6 +99,7 @@ class Follower : public barrett::systems::System {
             }
         }
 
+        Eigen::Quaterniond remappedOrientation;
         Eigen::Quaterniond* command_orientation_ptr = nullptr;
 
         switch (state) {
@@ -109,7 +110,8 @@ class Follower : public barrett::systems::System {
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
-                command_orientation_ptr = &theirOrientation;
+                remappedOrientation = remapOrientation(theirOrientation);
+                command_orientation_ptr = &remappedOrientation;
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
@@ -130,7 +132,7 @@ class Follower : public barrett::systems::System {
                 printJointPositions("Leader", theirJp);
                 printJointPositions("Follower", wamJP);
             } else if (has_remote_orientation) {
-                Eigen::Quaterniond leader_preview = theirOrientation.normalized();
+                Eigen::Quaterniond leader_preview = remapOrientation(theirOrientation);
                 printOrientation("Leader", "preview", leader_preview);
                 printOrientation("Follower", "current", follower_quat);
                 printAlignmentError(leader_preview, follower_quat);
@@ -163,6 +165,21 @@ class Follower : public barrett::systems::System {
         jt_type vel_term = kd.asDiagonal() * (ref_vel - cur_vel);
         return pos_term + vel_term;
     };
+
+    static Eigen::Quaterniond remapOrientation(const Eigen::Quaterniond& quat) {
+        static const Eigen::Matrix3d permutation = [] {
+            Eigen::Matrix3d m;
+            m << 0.0, 0.0, 1.0,
+                 1.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0;
+            return m;
+        }();
+
+        Eigen::Matrix3d mapped =
+            permutation * quat.normalized().toRotationMatrix() * permutation.transpose();
+        Eigen::Quaterniond result(mapped);
+        return result.normalized();
+    }
 
     static void printOrientation(const std::string& label, const std::string& measurement_type,
                                  const Eigen::Quaterniond& quat) {
