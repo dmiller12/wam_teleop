@@ -117,7 +117,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     systems::connect(wristVelocities.output, kinematicsWrist.jvInput);
 
     WristOrientationController<3> orientationController;
-    orientationController.setKp(4.2);
+    orientationController.setKp(4.2); 
     orientationController.setKd(0.042);
     systems::connect(kinematicsWrist.kinOutput, orientationController.kinInput);
 
