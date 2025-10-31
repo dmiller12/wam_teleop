@@ -160,6 +160,6 @@ class Leader : public barrett::systems::System {
         Eigen::Matrix3d R = normalized.toRotationMatrix();
         Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
         Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
-        std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
+        // std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
     }
 };

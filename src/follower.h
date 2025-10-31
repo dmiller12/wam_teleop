@@ -169,9 +169,9 @@ class Follower : public barrett::systems::System {
     static Eigen::Quaterniond remapOrientation(const Eigen::Quaterniond& quat) {
         static const Eigen::Matrix3d permutation = [] {
             Eigen::Matrix3d m;
-            m << 0.0, 0.0, 1.0,
-                 1.0, 0.0, 0.0,
-                 0.0, 1.0, 0.0;
+            m << 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0,
+                 1.0, 0.0, 0.0;
             return m;
         }();
 
