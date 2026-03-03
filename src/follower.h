@@ -105,43 +105,35 @@ class Follower : public barrett::systems::System {
         switch (state) {
             case State::INIT:
                 control.setZero();
+                orientationOutputValue->setData(&wristOrientation);
                 command_orientation_ptr = &wristOrientation;
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
-                remappedOrientation = remapOrientation(theirOrientation);
-                command_orientation_ptr = &remappedOrientation;
+                orientationOutputValue->setData(&theirOrientation);
+                // remappedOrientation = remapOrientation(theirOrientation);
+                // command_orientation_ptr = &remappedOrientation;
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
                 control.setZero();
-                command_orientation_ptr = &wristOrientation;
+                // command_orientation_ptr = &wristOrientation;
+                orientationOutputValue->setData(&wristOrientation);
                 break;
         }
 
         jtOutputValue->setData(&control);
-        if (command_orientation_ptr != nullptr) {
-            orientationOutputValue->setData(command_orientation_ptr);
-            Eigen::Quaterniond follower_quat = wristOrientation.normalized();
-            if (state == State::LINKED) {
-                Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
-                printOrientation("Leader", "target", command_quat);
-                printOrientation("Follower", "actual", follower_quat);
-                printAlignmentError(command_quat, follower_quat);
-                printJointPositions("Leader", theirJp);
-                printJointPositions("Follower", wamJP);
-            } else if (has_remote_orientation) {
-                Eigen::Quaterniond leader_preview = remapOrientation(theirOrientation);
-                printOrientation("Leader", "preview", leader_preview);
-                printOrientation("Follower", "current", follower_quat);
-                printAlignmentError(leader_preview, follower_quat);
-                printJointPositions("Leader", theirJp);
-                printJointPositions("Follower", wamJP);
-            } else {
-                printOrientation("Follower", "current", follower_quat);
-            }
-        }
+        // if (command_orientation_ptr != nullptr) {
+        //     orientationOutputValue->setData(command_orientation_ptr);
+        //     Eigen::Quaterniond follower_quat = wristOrientation.normalized();
+        //     if (state == State::LINKED) {
+        //         Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
+        //     } else if (has_remote_orientation) {
+        //         Eigen::Quaterniond leader_preview = remapOrientation(theirOrientation);
+        //     } else {
+        //     }
+        // }
     }
 
     jp_type theirJp;

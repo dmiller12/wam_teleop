@@ -45,7 +45,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
         SYNC_POS[0] = 0.0;
         SYNC_POS[1] = -1.57;
         SYNC_POS[2] = 0.0;
-        SYNC_POS[3] = 0.0;
+        SYNC_POS[3] = 2.0;
 
     } else {
         printf("Error: Only 4 DOF wam supported\n");
@@ -98,7 +98,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
                 } else {
                     wam.moveTo(SYNC_POS);
                     haptic_wrist::jp_type wrist_sync; 
-                    wrist_sync << 0.0, 0.0, 0.0, 0.0; 
+                    wrist_sync << 0.0, 0.0, 0.0; 
                     hw.jointMoveTo(wrist_sync);
 
                     printf("Press [Enter] to link with the other WAM.");

@@ -79,8 +79,9 @@ class Leader : public barrett::systems::System {
         haptic_wrist::jp_type wristJP = hw->getPosition();
         haptic_wrist::jp_type wristJV = hw->getVelocity();
         Eigen::Quaterniond hwOrientation  = hw->getOrientation();
+
         // Eigen::AngleAxisd angle_axis(hwOrientation);
-        //
+
         // std::cout << "Angle: " << angle_axis.angle()
         //           << " rad, Axis: [" << angle_axis.axis().transpose()
         //           << "]" << std::endl;
@@ -94,14 +95,16 @@ class Leader : public barrett::systems::System {
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
-        if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
+        auto delay = now - received_data->timestamp;
+        if (received_data && (delay <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp.template head<DOF>();
             theirJv = received_data->jv.template head<DOF>();
             theirOrientation = received_data->orientation;
         } else {
             if (state == State::LINKED) {
-                std::cout << "lost link" << std::endl;
+                auto delay_ms = std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
+                std::cout << "lost link, delay: " << delay_ms << " ms" << std::endl;
                 state = State::UNLINKED;
             }
         }
@@ -142,7 +145,7 @@ class Leader : public barrett::systems::System {
     std::mutex state_mutex;
     jp_type joint_positions;
     UDPHandler<DOF + 3> udp_handler;
-    const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(20);
+    const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(30);
     State state;
     Eigen::Vector4d kp;
     Eigen::Vector4d kd;
