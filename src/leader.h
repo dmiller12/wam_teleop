@@ -35,8 +35,13 @@ class Leader : public barrett::systems::System {
         , hw(hw)
         , state(State::INIT) {
 
-        kp << 900, 1000, 400, 200;
-        kd << 10, 6, 3.3, 0.8;
+        kp.setZero();
+        kd.setZero();
+
+        if constexpr (DOF >= 4) {
+            kp.template head<4>() << 900, 1000, 400, 200;
+            kd.template head<4>() << 10, 6, 3.3, 0.8;
+        }
 
         if (em != NULL) {
             em->startManaging(*this);
@@ -147,8 +152,8 @@ class Leader : public barrett::systems::System {
     UDPHandler<DOF + 3> udp_handler;
     const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(30);
     State state;
-    Eigen::Vector4d kp;
-    Eigen::Vector4d kd;
+    Eigen::Matrix<double, DOF, 1> kp;
+    Eigen::Matrix<double, DOF, 1> kd;
 
     jt_type compute_control(const jp_type& ref_pos, const jv_type& ref_vel, const jp_type& cur_pos,
                             const jv_type& cur_vel) {
