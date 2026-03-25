@@ -11,7 +11,7 @@
 #include <barrett/thread/abstract/mutex.h>
 #include <barrett/units.h>
 
-template <size_t DOF>
+template <size_t DOF=3>
 class Leader : public barrett::systems::System {
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
 
@@ -34,7 +34,7 @@ class Leader : public barrett::systems::System {
         , udp_handler(remoteHost, send_port, rec_port)
         , hw(hw)
         , state(State::INIT) {
-
+        
         kp << 900, 1000, 400, 200;
         kd << 10, 6, 3.3, 0.8;
 
