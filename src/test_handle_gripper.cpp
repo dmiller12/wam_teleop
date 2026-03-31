@@ -18,12 +18,17 @@ int main(int argc, char** argv) {
 
     const double trigger_rest_pos = 0.25;
     float target_velocity = 0.3;
-    const float torque_threshold = 0.4;
+    const float torque_scaling = 3;
+    const float minStiffness = 0.3;  // Base spring force for moving through empty air
+    const float maxStiffness = 2.0;  // Max pushback when gripper is stalled/crushing
+    float trigger = 0.0;
+    bool bumper_pressed = false;
+
     while (true) {
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw.getHandle()) {
             haptic_wrist::handle_type handle = *opt_handle; 
-            float trigger = static_cast<float>(handle[3]);
-            bool bumper_pressed = static_cast<int>(handle[2]) == 1;
+            trigger = static_cast<float>(handle[3]);
+            bumper_pressed = static_cast<int>(handle[2]) == 1;
 
             // pushing trigger closes gripper
             // pushing bumper opens gripper
@@ -34,17 +39,18 @@ int main(int argc, char** argv) {
             } else {
                 gripper.setVelocity(0.0f);
             }
-
-            std::cout << trigger << std::endl;
         }
 
         gripper.controlLoopCallback();
         GripperState state = gripper.getLatestState();
         
-        std::cout << "\rPos: " << state.position << " | Trq: " << state.torque << "    " << std::flush;
-        if (state.torque > torque_threshold) {
-            std::cout << "sending haptics" << std::endl;
-            hw.setTriggerHaptics(255);
+        // std::cout << "\rPos: " << state.position << " | Trq: " << state.torque << "    " << std::flush;
+        if (state.torque > minStiffness) {
+            float dynamicStiffness = state.torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
+            uint8_t haptics = trigger * 255.0 * dynamicStiffness;
+            if (haptics > 230) haptics = 230;
+
+            hw.setTriggerHaptics(haptics);
         } else {
             hw.setTriggerHaptics(0); 
         }
