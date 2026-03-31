@@ -23,12 +23,16 @@ int main(int argc, char** argv) {
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw.getHandle()) {
             haptic_wrist::handle_type handle = *opt_handle; 
             float trigger = static_cast<float>(handle[3]);
+            bool bumper_pressed = static_cast<int>(handle[2]) == 1;
 
             // pushing trigger closes gripper
+            // pushing bumper opens gripper
             if (trigger > trigger_rest_pos) {
-                gripper.setVelocity(target_velocity);
-            } else {
+                gripper.setVelocity(target_velocity * trigger);
+            } else if (bumper_pressed) {
                 gripper.setVelocity(-target_velocity);
+            } else {
+                gripper.setVelocity(0.0f);
             }
 
             std::cout << trigger << std::endl;
@@ -41,6 +45,8 @@ int main(int argc, char** argv) {
         if (state.torque > torque_threshold) {
             std::cout << "sending haptics" << std::endl;
             hw.setTriggerHaptics(255);
+        } else {
+            hw.setTriggerHaptics(0); 
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
