@@ -15,12 +15,22 @@ int main(int argc, char** argv) {
         std::cerr << "ERROR: Failed to initialize Magnum Gripper." << std::endl;
         return -1;
     }
+
+    const int trigger_rest_pos = 0.25;
+    float target_velocity = 0.1;
     while (true) {
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw.getHandle()) {
             haptic_wrist::handle_type handle = *opt_handle; 
-            float target_velocity = static_cast<float>(handle[3]);
-            // gripper.setVelocity(target_velocity);
-            std::cout << target_velocity << std::endl;
+            float trigger = static_cast<float>(handle[3]);
+
+            // pushing trigger closes gripper
+            if (trigger > 0.25) {
+                gripper.setVelocity(target_velocity);
+            } else {
+                gripper.setVelocity(-target_velocity);
+            }
+
+            std::cout << trigger << std::endl;
         }
 
         gripper.controlLoopCallback();
