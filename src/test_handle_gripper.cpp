@@ -16,15 +16,16 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    const int trigger_rest_pos = 0.25;
-    float target_velocity = 0.1;
+    const double trigger_rest_pos = 0.25;
+    float target_velocity = 0.3;
+    const float torque_threshold = 0.4;
     while (true) {
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw.getHandle()) {
             haptic_wrist::handle_type handle = *opt_handle; 
             float trigger = static_cast<float>(handle[3]);
 
             // pushing trigger closes gripper
-            if (trigger > 0.25) {
+            if (trigger > trigger_rest_pos) {
                 gripper.setVelocity(target_velocity);
             } else {
                 gripper.setVelocity(-target_velocity);
@@ -37,6 +38,10 @@ int main(int argc, char** argv) {
         GripperState state = gripper.getLatestState();
         
         std::cout << "\rPos: " << state.position << " | Trq: " << state.torque << "    " << std::flush;
+        if (state.torque > torque_threshold) {
+            std::cout << "sending haptics" << std::endl;
+            hw.setTriggerHaptics(255);
+        }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
