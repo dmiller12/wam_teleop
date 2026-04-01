@@ -18,11 +18,15 @@ int main(int argc, char** argv) {
 
     const double trigger_rest_pos = 0.25;
     float target_velocity = 0.3;
-    const float torque_scaling = 3;
-    const float minStiffness = 0.3;  // Base spring force for moving through empty air
-    const float maxStiffness = 2.0;  // Max pushback when gripper is stalled/crushing
+    const float torque_scaling = 1.5;
+    const float minStiffness = 0.15;  // Base spring force for moving through empty air
+    const float maxStiffness = 1.0;  // Max pushback when gripper is stalled/crushing
     float trigger = 0.0;
     bool bumper_pressed = false;
+
+    // ema to smooth torque
+    const float alpha = 0.15f; 
+    float smoothed_torque = 0.0f;
 
     while (true) {
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw.getHandle()) {
@@ -43,12 +47,18 @@ int main(int argc, char** argv) {
 
         gripper.controlLoopCallback();
         GripperState state = gripper.getLatestState();
+
+        smoothed_torque = (alpha * state.torque) + ((1.0f - alpha) * smoothed_torque);
         
-        // std::cout << "\rPos: " << state.position << " | Trq: " << state.torque << "    " << std::flush;
-        if (state.torque > minStiffness) {
-            float dynamicStiffness = state.torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
-            uint8_t haptics = trigger * 255.0 * dynamicStiffness;
-            if (haptics > 230) haptics = 230;
+        // std::cout << "\rPos: " << state.position << " | Trq: " << smoothed_torque << "    " << std::flush;
+        if (smoothed_torque > minStiffness) {
+            float dynamicStiffness = smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
+            float raw_haptics = 255.0f * dynamicStiffness;
+            if (raw_haptics > 255.0f) raw_haptics = 255.0f;
+            
+            uint8_t haptics = static_cast<uint8_t>(raw_haptics);
+
+            std::cout << "haptics " << static_cast<int>(haptics) << " stiffness " << dynamicStiffness << " torque " << smoothed_torque << std::endl;
 
             hw.setTriggerHaptics(haptics);
         } else {
