@@ -43,6 +43,7 @@ int main(int argc, char** argv) {
             } else {
                 gripper.setVelocity(0.0f);
             }
+            std::cout << "trigger" << trigger << std::endl;;
         }
 
         gripper.controlLoopCallback();
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
 
         smoothed_torque = (alpha * state.torque) + ((1.0f - alpha) * smoothed_torque);
         
-        // std::cout << "\rPos: " << state.position << " | Trq: " << smoothed_torque << "    " << std::flush;
+        std::cout << "\rPos: " << state.position << " | Trq: " << smoothed_torque << "    " << std::endl;
         if (smoothed_torque > minStiffness) {
             float dynamicStiffness = smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
             float raw_haptics = 255.0f * dynamicStiffness;
