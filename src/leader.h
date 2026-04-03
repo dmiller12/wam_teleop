@@ -113,8 +113,8 @@ class Leader : public barrett::systems::System {
             }
         }
 
-        gripper.controlLoopCallback();
-        GripperState gripper_state = gripper.getLatestState();
+        gripper->controlLoopCallback();
+        GripperState gripper_state = gripper->getLatestState();
 
         smoothed_torque = (alpha * gripper_state.torque) + ((1.0f - alpha) * smoothed_torque);
         
