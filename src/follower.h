@@ -80,6 +80,7 @@ class Follower : public barrett::systems::System {
         wristOrientation = wamOrientationIn.getValue();
         sendJpMsg << wamJP;
         sendJvMsg << wamJV;
+        sendJpMsg(6) = 0.0; // keep this 0 since we are using joystick
 
         udp_handler.send(sendJpMsg, sendJvMsg, wristOrientation);
 
