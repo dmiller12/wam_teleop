@@ -85,14 +85,12 @@ class Follower : public barrett::systems::System {
         udp_handler.send(sendJpMsg, sendJvMsg, wristOrientation);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
-        bool has_remote_orientation = false;
         auto now = std::chrono::steady_clock::now();
         if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
 
             theirJp = received_data->jp;
             theirJv = received_data->jv;
             theirOrientation = received_data->orientation;
-            has_remote_orientation = true;
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -100,41 +98,27 @@ class Follower : public barrett::systems::System {
             }
         }
 
-        Eigen::Quaterniond remappedOrientation;
-        Eigen::Quaterniond* command_orientation_ptr = nullptr;
-
         switch (state) {
             case State::INIT:
                 control.setZero();
                 orientationOutputValue->setData(&wristOrientation);
-                command_orientation_ptr = &wristOrientation;
+                j7_hold_active = false;
                 break;
             case State::LINKED:
                 // Active teleop. Only the callee can transition to LINKED
                 control = compute_control(theirJp, theirJv, wamJP, wamJV);
+                applyJoint7HybridControl();
                 orientationOutputValue->setData(&theirOrientation);
-                // remappedOrientation = remapOrientation(theirOrientation);
-                // command_orientation_ptr = &remappedOrientation;
                 break;
             case State::UNLINKED:
                 // Changed to unlinked with either timeout or callee.
                 control.setZero();
-                // command_orientation_ptr = &wristOrientation;
                 orientationOutputValue->setData(&wristOrientation);
+                j7_hold_active = false;
                 break;
         }
 
         jtOutputValue->setData(&control);
-        // if (command_orientation_ptr != nullptr) {
-        //     orientationOutputValue->setData(command_orientation_ptr);
-        //     Eigen::Quaterniond follower_quat = wristOrientation.normalized();
-        //     if (state == State::LINKED) {
-        //         Eigen::Quaterniond command_quat = command_orientation_ptr->normalized();
-        //     } else if (has_remote_orientation) {
-        //         Eigen::Quaterniond leader_preview = remapOrientation(theirOrientation);
-        //     } else {
-        //     }
-        // }
     }
 
     jp_type theirJp;
@@ -151,6 +135,10 @@ class Follower : public barrett::systems::System {
     State state;
     Eigen::Matrix<double, DOF, 1> kp;
     Eigen::Matrix<double, DOF, 1> kd;
+    static constexpr size_t J7_INDEX = 6;
+    const double j7_joy_deadband = 0.05;
+    bool j7_hold_active = false;
+    double j7_hold_position = 0.0;
 
     jt_type compute_control(const jp_type& ref_pos, const jv_type& ref_vel, const jp_type& cur_pos,
                             const jv_type& cur_vel) {
@@ -159,19 +147,31 @@ class Follower : public barrett::systems::System {
         return pos_term + vel_term;
     };
 
-    static Eigen::Quaterniond remapOrientation(const Eigen::Quaterniond& quat) {
-        static const Eigen::Matrix3d permutation = [] {
-            Eigen::Matrix3d m;
-            m << 0.0, 1.0, 0.0,
-                 0.0, 0.0, 1.0,
-                 1.0, 0.0, 0.0;
-            return m;
-        }();
+    void applyJoint7HybridControl() {
+        if constexpr (DOF <= J7_INDEX) {
+            return;
+        }
 
-        Eigen::Matrix3d mapped =
-            permutation * quat.normalized().toRotationMatrix() * permutation.transpose();
-        Eigen::Quaterniond result(mapped);
-        return result.normalized();
+        const double joy_cmd = theirJv(J7_INDEX);
+        const bool joystick_active = std::abs(joy_cmd) > j7_joy_deadband;
+
+        if (joystick_active) {
+            // Deflected stick: velocity-like behavior (no spring-to-zero on position).
+            j7_hold_active = false;
+            const double vel_error = joy_cmd - wamJV(J7_INDEX);
+            control(J7_INDEX) = kd(J7_INDEX) * vel_error;
+            return;
+        }
+
+        // Re-centered stick: latch current angle and hold this pose.
+        if (!j7_hold_active) {
+            j7_hold_position = wamJP(J7_INDEX);
+            j7_hold_active = true;
+        }
+
+        const double pos_error = j7_hold_position - wamJP(J7_INDEX);
+        const double vel_error = -wamJV(J7_INDEX);
+        control(J7_INDEX) = kp(J7_INDEX) * pos_error + kd(J7_INDEX) * vel_error;
     }
 
     static void printOrientation(const std::string& label, const std::string& measurement_type,

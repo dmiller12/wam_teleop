@@ -24,7 +24,6 @@
 
 #include "follower.h"
 #include "background_state_publisher.h"
-#include "orientation_controller.h"
 #include "tool_orientation.h"
 #include "print_orientation.h"
 
@@ -45,14 +44,6 @@ bool validate_args(int argc, char** argv) {
     }
 
     return true;
-}
-
-template <size_t DOF>
-typename units::JointTorques<DOF>::type combineTorques(const boost::tuple<typename units::JointTorques<DOF>::type, typename units::JointTorques<3>::type>& t) {
-
-    typename units::JointTorques<DOF>::type out = boost::get<0>(t); 
-    out.segment(4, 3) = boost::get<1>(t);
-    return out;
 }
 
 template <size_t DOF>
@@ -116,17 +107,9 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     systems::connect(wristPositions.output, kinematicsWrist.jpInput);
     systems::connect(wristVelocities.output, kinematicsWrist.jvInput);
 
-    WristOrientationController<3> orientationController;
-    orientationController.setKp(4.2); 
-    orientationController.setKd(0.042);
-    systems::connect(kinematicsWrist.kinOutput, orientationController.kinInput);
-
     ToolOrientation<3> wristOrientation;
-
     systems::connect(kinematicsWrist.kinOutput, wristOrientation.kinInput);
-    systems::connect(wristOrientation.output, orientationController.feedbackInput);
     systems::connect(wristOrientation.output, follower.wamOrientationIn);
-    systems::connect(follower.wristOrientationOutput, orientationController.referenceInput);
 
     // PrintOrientation printLeaderOrientation(pm.getExecutionManager(), "Leader Orientation: ");
     // systems::connect(follower.wristOrientationOutput, printLeaderOrientation.input);
@@ -134,17 +117,9 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     // PrintOrientation printFollowerOrientation(pm.getExecutionManager(), "Follower Orientation: ");
     // systems::connect(wristOrientation.output, printFollowerOrientation.input);
 
-    systems::TupleGrouper<jt_type, units::JointTorques<3>::type> tg;
-
-    systems::connect(follower.wamJTOutput, tg.template getInput<0>());
-    systems::connect(orientationController.controlOutput, tg.template getInput<1>());
-
-    systems::Callback<boost::tuple<jt_type, units::JointTorques<3>::type>, jt_type> torqueCombineCallback(combineTorques<DOF>);
-
-    systems::connect(tg.output, torqueCombineCallback.input);
-
-    // systems::PrintToStream<jt_type> printTorque(pm.getExecutionManager(), "Torque: "); 
-    // systems::connect(torqueCombineCallback.output, printTorque.input);
+    // Pure joint-to-joint torque control (no orientation torque controller).
+    // systems::PrintToStream<jt_type> printTorque(pm.getExecutionManager(), "Torque: ");
+    // systems::connect(follower.wamJTOutput, printTorque.input);
 
     wam.gravityCompensate();
 
@@ -167,7 +142,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
                 printf("Press [Enter] to link with the other WAM.");
                 waitForEnter();
                 follower.tryLink();
-                wam.trackReferenceSignal(torqueCombineCallback.output);
+                wam.trackReferenceSignal(follower.wamJTOutput);
 
                 btsleep(0.1); // wait an execution cycle or two
                 if (follower.isLinked()) {
@@ -252,4 +227,3 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
 
     return 0;
 }
-
