@@ -17,15 +17,12 @@
 #include <barrett/products/product_manager.h>
 #include <barrett/systems.h>
 #include <barrett/units.h>
-#include <barrett/systems/kinematics_base.h>
 
 #define BARRETT_SMF_VALIDATE_ARGS
 #include <barrett/standard_main_function.h>
 
 #include "follower.h"
 #include "background_state_publisher.h"
-#include "tool_orientation.h"
-#include "print_orientation.h"
 
 using namespace barrett;
 using detail::waitForEnter;
@@ -44,18 +41,6 @@ bool validate_args(int argc, char** argv) {
     }
 
     return true;
-}
-
-template <size_t DOF>
-typename units::JointPositions<3>::type extractWristPositions(const typename units::JointPositions<DOF>::type& full_vector)
-{
-    return full_vector.template tail<3>();
-}
-
-template <size_t DOF>
-typename units::JointVelocities<3>::type extractWristVelocities(const typename units::JointVelocities<DOF>::type& full_vector)
-{
-    return full_vector.template tail<3>();
 }
 
 template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, systems::Wam<DOF> &wam) {
@@ -97,30 +82,6 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
     systems::connect(wam.jpOutput, follower.wamJPIn);
     systems::connect(wam.jvOutput, follower.wamJVIn);
 
-    systems::KinematicsBase<3> kinematicsWrist(pm.getConfig().lookup("wam7w")["kinematics_wrist"]);
-    systems::Callback<jp_type, units::JointPositions<3>::type> wristPositions(extractWristPositions<DOF>);
-    systems::Callback<jv_type, units::JointVelocities<3>::type> wristVelocities(extractWristVelocities<DOF>);
-
-    systems::connect(wam.jpOutput, wristPositions.input);
-    systems::connect(wam.jvOutput, wristVelocities.input);
-    
-    systems::connect(wristPositions.output, kinematicsWrist.jpInput);
-    systems::connect(wristVelocities.output, kinematicsWrist.jvInput);
-
-    ToolOrientation<3> wristOrientation;
-    systems::connect(kinematicsWrist.kinOutput, wristOrientation.kinInput);
-    systems::connect(wristOrientation.output, follower.wamOrientationIn);
-
-    // PrintOrientation printLeaderOrientation(pm.getExecutionManager(), "Leader Orientation: ");
-    // systems::connect(follower.wristOrientationOutput, printLeaderOrientation.input);
-    //
-    // PrintOrientation printFollowerOrientation(pm.getExecutionManager(), "Follower Orientation: ");
-    // systems::connect(wristOrientation.output, printFollowerOrientation.input);
-
-    // Pure joint-to-joint torque control (no orientation torque controller).
-    // systems::PrintToStream<jt_type> printTorque(pm.getExecutionManager(), "Torque: ");
-    // systems::connect(follower.wamJTOutput, printTorque.input);
-
     wam.gravityCompensate();
 
     std::string line;
@@ -142,7 +103,7 @@ template <size_t DOF> int wam_main(int argc, char **argv, ProductManager &pm, sy
                 printf("Press [Enter] to link with the other WAM.");
                 waitForEnter();
                 follower.tryLink();
-                wam.trackReferenceSignal(follower.wamJTOutput);
+                wam.trackReferenceSignal(follower.wamJPOutput);
 
                 btsleep(0.1); // wait an execution cycle or two
                 if (follower.isLinked()) {

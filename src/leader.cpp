@@ -100,7 +100,7 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
                 } else {
                     wam.moveTo(SYNC_POS);
                     haptic_wrist::jp_type wrist_sync; 
-                    wrist_sync << 0.0, 0.0, 0.0; 
+                    wrist_sync.setZero();
                     hw.jointMoveTo(wrist_sync);
 
                     printf("Press [Enter] to link with the other WAM.");

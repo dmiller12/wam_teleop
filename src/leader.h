@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 #include <iostream>
 #include <cmath>
+#include <cstdint>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -15,38 +16,29 @@
 
 using namespace gripper::magnum_opus;
 
-template <size_t DOF=3>
+template <size_t DOF = 3>
 class Leader : public barrett::systems::System {
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
 
   public:
     Input<jp_type> wamJPIn;
     Input<jv_type> wamJVIn;
-    Output<jt_type> wamJPOutput;
+    Output<jp_type> wamJPOutput;
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, MagnumGripper* gripper, const std::string& remoteHost,
-                    int rec_port = 5554, int send_port = 5555, const std::string& sysName = "Leader")
+    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, MagnumGripper* gripper,
+                    const std::string& remoteHost, int rec_port = 5554, int send_port = 5555,
+                    const std::string& sysName = "Leader")
         : System(sysName)
         , theirJp(0.0)
-        , theirJv(0.0)
-        , control(0.0)
         , wamJPIn(this)
         , wamJVIn(this)
-        , wamJPOutput(this, &jtOutputValue)
+        , wamJPOutput(this, &jpOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , hw(hw)
         , gripper(gripper)
         , state(State::INIT) {
-        
-        kp.setZero();
-        kd.setZero();
-
-        if constexpr (DOF >= 4) {
-            kp.template head<4>() << 900, 1000, 400, 200;
-            kd.template head<4>() << 10, 6, 3.3, 0.8;
-        }
 
         if (em != NULL) {
             em->startManaging(*this);
@@ -70,37 +62,33 @@ class Leader : public barrett::systems::System {
     }
 
   protected:
-    typename Output<jt_type>::Value* jtOutputValue;
+    typename Output<jp_type>::Value* jpOutputValue;
     jp_type wamJP;
     jv_type wamJV;
     Eigen::Matrix<double, DOF + 3, 1> sendJpMsg;
-    Eigen::Matrix<double, DOF + 3, 1> sendJvMsg;
-    float joy_x = 0;
-    float joy_y = 0;
+
+    float joy_x = 0.0f;
     float trigger = 0;
     bool bumper_pressed = 0;
     const double trigger_rest_pos = 0.25;
     float target_velocity = 0.3;
     const float torque_scaling = 1.5;
-    const float minStiffness = 0.15;  // Base spring force for moving through empty air
-    const float maxStiffness = 1.0;  // Max pushback when gripper is stalled/crushing
-                                     //
-    // ema to smooth torque
-    const float alpha = 0.15f; 
+    const float minStiffness = 0.15;
+    const float maxStiffness = 1.0;
+
+    const float alpha = 0.15f;
     float smoothed_torque = 0.0f;
 
     using ReceivedData = typename UDPHandler<DOF + 3>::ReceivedData;
 
     virtual void operate() {
 
-        // TODO: change back to 1.5, likely need to scale vel as well
-        double j5_scale = 1.0;
-        double j7_scale = 1.0;
+        // TODO: change back to 1.5 when recalibrated for this setup
+        const double j5_scale = 1.0;
 
         if (boost::optional<haptic_wrist::handle_type> opt_handle = hw->getHandle()) {
-            haptic_wrist::handle_type handle = *opt_handle; 
+            haptic_wrist::handle_type handle = *opt_handle;
             joy_x = static_cast<float>(handle[0]);
-            joy_y = static_cast<float>(handle[1]);
             trigger = static_cast<float>(handle[3]);
             bumper_pressed = static_cast<int>(handle[2]) == 1;
 
@@ -117,87 +105,66 @@ class Leader : public barrett::systems::System {
         GripperState gripper_state = gripper->getLatestState();
 
         smoothed_torque = (alpha * gripper_state.torque) + ((1.0f - alpha) * smoothed_torque);
-        
-        // std::cout << "\rPos: " << gripper_state.position << " | Trq: " << smoothed_torque << "    " << std::flush;
         if (smoothed_torque > minStiffness) {
             float dynamicStiffness = smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
             float raw_haptics = 255.0f * dynamicStiffness;
-            if (raw_haptics > 255.0f) raw_haptics = 255.0f;
-            
-            uint8_t haptics = static_cast<uint8_t>(raw_haptics);
-
-            std::cout << "haptics " << static_cast<int>(haptics) << " stiffness " << dynamicStiffness << " torque " << smoothed_torque << std::endl;
-
-            hw->setTriggerHaptics(haptics);
+            if (raw_haptics > 255.0f) {
+                raw_haptics = 255.0f;
+            }
+            hw->setTriggerHaptics(static_cast<uint8_t>(raw_haptics));
         } else {
-            hw->setTriggerHaptics(0); 
+            hw->setTriggerHaptics(0);
         }
 
         wamJP = wamJPIn.getValue();
         wamJV = wamJVIn.getValue();
         haptic_wrist::jp_type wristJP = hw->getPosition();
-        haptic_wrist::jp_type wristJV = hw->getVelocity();
-        Eigen::Quaterniond hwOrientation  = hw->getOrientation();
 
-        // Eigen::AngleAxisd angle_axis(hwOrientation);
+        sendJpMsg.template head<DOF>() = wamJP;
+        sendJpMsg(DOF + 0) = wristJP[0];
+        sendJpMsg(DOF + 1) = wristJP[1];
+        // J7 channel carries joystick command for follower-side hybrid control.
+        sendJpMsg(DOF + 2) = joy_x;
 
-        // std::cout << "Angle: " << angle_axis.angle()
-        //           << " rad, Axis: [" << angle_axis.axis().transpose()
-        //           << "]" << std::endl;
+        sendJpMsg(DOF + 0) *= j5_scale;
 
-        // we only do velocity control for j7
-        // NOTE: joy might need to be scaled
-        sendJpMsg << wamJP, wristJP, 0;
-        sendJvMsg << wamJV, wristJV, joy_x;
-        sendJpMsg(4) = j5_scale * sendJpMsg(4);
-        // sendJpMsg(6) = j7_scale * sendJpMsg(6);
-
-        udp_handler.send(sendJpMsg, sendJvMsg, hwOrientation);
+        udp_handler.send(sendJpMsg);
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
-        auto delay = now - received_data->timestamp;
-        if (received_data && (delay <= TIMEOUT_DURATION)) {
-
+        if (received_data && (now - received_data->timestamp <= TIMEOUT_DURATION)) {
             theirJp = received_data->jp.template head<DOF>();
-            theirJv = received_data->jv.template head<DOF>();
-            theirOrientation = received_data->orientation;
+
+            theirWristJp = hw->getPosition();
+            if (theirWristJp.size() > 0) {
+                theirWristJp[0] = received_data->jp(DOF + 0) / j5_scale;
+            }
+            if (theirWristJp.size() > 1) {
+                theirWristJp[1] = received_data->jp(DOF + 1);
+            }
         } else {
             if (state == State::LINKED) {
-                auto delay_ms = std::chrono::duration_cast<std::chrono::milliseconds>(delay).count();
-                std::cout << "lost link, delay: " << delay_ms << " ms" << std::endl;
+                std::cout << "lost link" << std::endl;
                 state = State::UNLINKED;
             }
         }
 
-        Eigen::Quaterniond command_orientation;
-
         switch (state) {
             case State::INIT:
-                // Used so haptic wirst holds on moveTo command
-                control.setZero();
-                command_orientation = hwOrientation.normalized();
+                jpOutputValue->setData(&wamJP);
                 break;
             case State::LINKED:
-                command_orientation = theirOrientation.normalized();
-                control = compute_control(theirJp, theirJv, wamJP, wamJV);
+                hw->setTarget(theirWristJp);
+                jpOutputValue->setData(&theirJp);
                 break;
             case State::UNLINKED:
-                // Changed to unlinked with either timeout or callee.
-                control.setZero();
-                command_orientation = hwOrientation.normalized();
+                hw->setTarget(wristJP);
+                jpOutputValue->setData(&wamJP);
                 break;
         }
-
-        hw->setTarget(command_orientation);
-        jtOutputValue->setData(&control);
-        printOrientation("Leader", command_orientation);
     }
 
     jp_type theirJp;
-    jp_type theirJv;
-    jt_type control;
-    Eigen::Quaterniond theirOrientation;
     haptic_wrist::jp_type theirWristJp;
 
   private:
@@ -209,22 +176,4 @@ class Leader : public barrett::systems::System {
     UDPHandler<DOF + 3> udp_handler;
     const std::chrono::milliseconds TIMEOUT_DURATION = std::chrono::milliseconds(30);
     State state;
-    Eigen::Matrix<double, DOF, 1> kp;
-    Eigen::Matrix<double, DOF, 1> kd;
-
-    jt_type compute_control(const jp_type& ref_pos, const jv_type& ref_vel, const jp_type& cur_pos,
-                            const jv_type& cur_vel) {
-        jt_type pos_term = kp.asDiagonal() * (ref_pos - cur_pos);
-        jt_type vel_term = kd.asDiagonal() * (ref_vel - cur_vel);
-        return pos_term + vel_term;
-    };
-
-    static void printOrientation(const std::string& label, const Eigen::Quaterniond& quat) {
-        Eigen::Quaterniond normalized = quat.normalized();
-        constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
-        Eigen::Matrix3d R = normalized.toRotationMatrix();
-        Eigen::Vector3d rpy_rad = R.eulerAngles(0, 1, 2);
-        Eigen::Vector3d rpy_deg = rpy_rad * kRadToDeg;
-        // std::cout << "[" << label << "] Wrist target RPY (deg): " << rpy_deg.transpose() << std::endl;
-    }
 };
