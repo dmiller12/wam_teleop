@@ -89,7 +89,7 @@ class Leader : public barrett::systems::System {
     const float minStiffness = 0.15;
     const float maxStiffness = 1.0;
 
-    const float alpha = 0.15f;
+    const float alpha = 0.35f;
 
     using ReceivedData = typename UDPHandler<DOF + 3>::ReceivedData;
 
@@ -189,7 +189,7 @@ class Leader : public barrett::systems::System {
                 hw->setTriggerHaptics(0);
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
         }
 
         gripper->setVelocity(0.0f);

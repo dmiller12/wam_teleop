@@ -70,6 +70,15 @@ int wam_main(int argc, char** argv, ProductManager& pm, systems::Wam<DOF>& wam) 
     hw.run();
 
     MagnumGripper gripper;
+    bool gripper_initialized = false;
+    try {
+        gripper_initialized = gripper.initialize();
+    } catch (const std::exception& e) {
+        std::cerr << "WARNING: Magnum gripper init threw exception: " << e.what() << std::endl;
+    }
+    if (!gripper_initialized) {
+        std::cerr << "WARNING: Magnum gripper not initialized. Trigger/bumper commands will be ignored." << std::endl;
+    }
 
     ros::init(argc, argv, "leader");
     BackgroundStatePublisher<DOF> state_publisher(pm.getExecutionManager(), wam, &hw);
