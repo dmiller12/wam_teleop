@@ -7,6 +7,9 @@
 #include <iostream>
 #include <cmath>
 #include <cstdint>
+#include <atomic>
+#include <thread>
+#include <chrono>
 
 #include "udp_handler.h"
 #include <barrett/detail/ca_macro.h>
@@ -38,14 +41,24 @@ class Leader : public barrett::systems::System {
         , udp_handler(remoteHost, send_port, rec_port)
         , hw(hw)
         , gripper(gripper)
-        , state(State::INIT) {
+        , state(State::INIT)
+        , joy_x(0.0f)
+        , trigger(0.0f)
+        , bumper_pressed(false)
+        , io_running(false) {
 
         if (em != NULL) {
             em->startManaging(*this);
         }
+        io_running.store(true);
+        io_thread = std::thread(&Leader::pollHandleAndGripper, this);
     }
 
     virtual ~Leader() {
+        io_running.store(false);
+        if (io_thread.joinable()) {
+            io_thread.join();
+        }
         this->mandatoryCleanUp();
     }
 
@@ -67,9 +80,9 @@ class Leader : public barrett::systems::System {
     jv_type wamJV;
     Eigen::Matrix<double, DOF + 3, 1> sendJpMsg;
 
-    float joy_x = 0.0f;
-    float trigger = 0;
-    bool bumper_pressed = 0;
+    std::atomic<float> joy_x;
+    std::atomic<float> trigger;
+    std::atomic<bool> bumper_pressed;
     const double trigger_rest_pos = 0.25;
     float target_velocity = 0.3;
     const float torque_scaling = 1.5;
@@ -77,7 +90,6 @@ class Leader : public barrett::systems::System {
     const float maxStiffness = 1.0;
 
     const float alpha = 0.15f;
-    float smoothed_torque = 0.0f;
 
     using ReceivedData = typename UDPHandler<DOF + 3>::ReceivedData;
 
@@ -85,36 +97,6 @@ class Leader : public barrett::systems::System {
 
         // TODO: change back to 1.5 when recalibrated for this setup
         const double j5_scale = 1.0;
-
-        if (boost::optional<haptic_wrist::handle_type> opt_handle = hw->getHandle()) {
-            haptic_wrist::handle_type handle = *opt_handle;
-            joy_x = static_cast<float>(handle[0]);
-            trigger = static_cast<float>(handle[3]);
-            bumper_pressed = static_cast<int>(handle[2]) == 1;
-
-            if (trigger > trigger_rest_pos) {
-                gripper->setVelocity(target_velocity * trigger);
-            } else if (bumper_pressed) {
-                gripper->setVelocity(-target_velocity);
-            } else {
-                gripper->setVelocity(0.0f);
-            }
-        }
-
-        gripper->controlLoopCallback();
-        GripperState gripper_state = gripper->getLatestState();
-
-        smoothed_torque = (alpha * gripper_state.torque) + ((1.0f - alpha) * smoothed_torque);
-        if (smoothed_torque > minStiffness) {
-            float dynamicStiffness = smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
-            float raw_haptics = 255.0f * dynamicStiffness;
-            if (raw_haptics > 255.0f) {
-                raw_haptics = 255.0f;
-            }
-            hw->setTriggerHaptics(static_cast<uint8_t>(raw_haptics));
-        } else {
-            hw->setTriggerHaptics(0);
-        }
 
         wamJP = wamJPIn.getValue();
         wamJV = wamJVIn.getValue();
@@ -124,7 +106,7 @@ class Leader : public barrett::systems::System {
         sendJpMsg(DOF + 0) = wristJP[0];
         sendJpMsg(DOF + 1) = wristJP[1];
         // J7 channel carries joystick command for follower-side hybrid control.
-        sendJpMsg(DOF + 2) = joy_x;
+        sendJpMsg(DOF + 2) = joy_x.load();
 
         sendJpMsg(DOF + 0) *= j5_scale;
 
@@ -154,8 +136,10 @@ class Leader : public barrett::systems::System {
                 jpOutputValue->setData(&wamJP);
                 break;
             case State::LINKED:
-                hw->setTarget(theirWristJp);
-                jpOutputValue->setData(&theirJp);
+                // Unilateral teleop: leader stays locally commanded while streaming state to follower.
+                // Commanding leader from follower creates a delayed positive-feedback loop and jitter.
+                hw->setTarget(wristJP);
+                jpOutputValue->setData(&wamJP);
                 break;
             case State::UNLINKED:
                 hw->setTarget(wristJP);
@@ -166,6 +150,51 @@ class Leader : public barrett::systems::System {
 
     jp_type theirJp;
     haptic_wrist::jp_type theirWristJp;
+    std::thread io_thread;
+    std::atomic<bool> io_running;
+
+    void pollHandleAndGripper() {
+        float local_smoothed_torque = 0.0f;
+        while (io_running.load()) {
+            if (boost::optional<haptic_wrist::handle_type> opt_handle = hw->getHandle()) {
+                haptic_wrist::handle_type handle = *opt_handle;
+                joy_x.store(static_cast<float>(handle[0]));
+                trigger.store(static_cast<float>(handle[3]));
+                bumper_pressed.store(static_cast<int>(handle[2]) == 1);
+            }
+
+            const float local_trigger = trigger.load();
+            const bool local_bumper_pressed = bumper_pressed.load();
+            if (local_trigger > trigger_rest_pos) {
+                gripper->setVelocity(target_velocity * local_trigger);
+            } else if (local_bumper_pressed) {
+                gripper->setVelocity(-target_velocity);
+            } else {
+                gripper->setVelocity(0.0f);
+            }
+
+            gripper->controlLoopCallback();
+            GripperState gripper_state = gripper->getLatestState();
+
+            local_smoothed_torque = (alpha * gripper_state.torque) + ((1.0f - alpha) * local_smoothed_torque);
+            if (local_smoothed_torque > minStiffness) {
+                float dynamicStiffness =
+                    local_smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
+                float raw_haptics = 255.0f * dynamicStiffness;
+                if (raw_haptics > 255.0f) {
+                    raw_haptics = 255.0f;
+                }
+                hw->setTriggerHaptics(static_cast<uint8_t>(raw_haptics));
+            } else {
+                hw->setTriggerHaptics(0);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        gripper->setVelocity(0.0f);
+        hw->setTriggerHaptics(0);
+    }
 
   private:
     DISALLOW_COPY_AND_ASSIGN(Leader);
