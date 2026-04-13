@@ -140,6 +140,9 @@ class Leader : public barrett::systems::System {
                 // Commanding leader from follower creates a delayed positive-feedback loop and jitter.
                 hw->setTarget(wristJP);
                 jpOutputValue->setData(&wamJP);
+
+                // hw->setTarget(theirWristJp);
+                // jpOutputValue->setData(&theirJp);
                 break;
             case State::UNLINKED:
                 hw->setTarget(wristJP);
