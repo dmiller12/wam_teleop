@@ -192,7 +192,7 @@ class Leader : public barrett::systems::System {
                 hw->setTriggerHaptics(0);
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
 
         gripper->setVelocity(0.0f);
