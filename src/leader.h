@@ -1,7 +1,6 @@
 #pragma once
 #include <haptic_wrist/haptic_wrist.h>
 #include <boost/optional.hpp>
-#include "gripper/magnum_opus/magnum_gripper.h"
 
 #include <boost/asio.hpp>
 #include <iostream>
@@ -17,8 +16,6 @@
 #include <barrett/thread/abstract/mutex.h>
 #include <barrett/units.h>
 
-using namespace gripper::magnum_opus;
-
 template <size_t DOF = 3>
 class Leader : public barrett::systems::System {
     BARRETT_UNITS_TEMPLATE_TYPEDEFS(DOF);
@@ -30,7 +27,7 @@ class Leader : public barrett::systems::System {
 
     enum class State { INIT, LINKED, UNLINKED };
 
-    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw, MagnumGripper* gripper,
+    explicit Leader(barrett::systems::ExecutionManager* em, haptic_wrist::HapticWrist* hw,
                     const std::string& remoteHost, int rec_port = 5554, int send_port = 5555,
                     const std::string& sysName = "Leader")
         : System(sysName)
@@ -40,18 +37,19 @@ class Leader : public barrett::systems::System {
         , wamJPOutput(this, &jpOutputValue)
         , udp_handler(remoteHost, send_port, rec_port)
         , hw(hw)
-        , gripper(gripper)
         , state(State::INIT)
         , joy_x(0.0f)
         , trigger(0.0f)
         , bumper_pressed(false)
+        , desired_gripper_vel(0.0f)
+        , remote_gripper_torque(0.0f)
         , io_running(false) {
 
         if (em != NULL) {
             em->startManaging(*this);
         }
         io_running.store(true);
-        io_thread = std::thread(&Leader::pollHandleAndGripper, this);
+        io_thread = std::thread(&Leader::pollHandle, this);
     }
 
     virtual ~Leader() {
@@ -83,6 +81,9 @@ class Leader : public barrett::systems::System {
     std::atomic<float> joy_x;
     std::atomic<float> trigger;
     std::atomic<bool> bumper_pressed;
+    std::atomic<float> desired_gripper_vel;
+    std::atomic<float> remote_gripper_torque;
+
     const double trigger_rest_pos = 0.25;
     float target_velocity = 0.3;
     const float torque_scaling = 1.5;
@@ -107,10 +108,12 @@ class Leader : public barrett::systems::System {
         sendJpMsg(DOF + 1) = wristJP[1];
         // J7 channel carries joystick command for follower-side hybrid control.
         sendJpMsg(DOF + 2) = joy_x.load();
+        // J8 channel carries gripper velocity. not clean for now  but need to decide on control we want
+        sendJpMsg(DOF + 3) = desired_gripper_vel.load();
 
         sendJpMsg(DOF + 0) *= j5_scale;
 
-        udp_handler.send(sendJpMsg);
+        udp_handler.send(sendJpMsg, desired_gripper_vel.load());
 
         boost::optional<ReceivedData> received_data = udp_handler.getLatestReceived();
         auto now = std::chrono::steady_clock::now();
@@ -124,6 +127,8 @@ class Leader : public barrett::systems::System {
             if (theirWristJp.size() > 1) {
                 theirWristJp[1] = received_data->jp(DOF + 1);
             }
+
+            remote_gripper_torque.store(received_data->gripper_data);
         } else {
             if (state == State::LINKED) {
                 std::cout << "lost link" << std::endl;
@@ -156,7 +161,7 @@ class Leader : public barrett::systems::System {
     std::thread io_thread;
     std::atomic<bool> io_running;
 
-    void pollHandleAndGripper() {
+    void pollHandle() {
         float local_smoothed_torque = 0.0f;
         while (io_running.load()) {
             if (boost::optional<haptic_wrist::handle_type> opt_handle = hw->getHandle()) {
@@ -168,18 +173,17 @@ class Leader : public barrett::systems::System {
 
             const float local_trigger = trigger.load();
             const bool local_bumper_pressed = bumper_pressed.load();
+            float vel_command = 0.0f;
             if (local_trigger > trigger_rest_pos) {
-                gripper->setVelocity(target_velocity * local_trigger);
+                vel_command = target_velocity * local_trigger;
             } else if (local_bumper_pressed) {
-                gripper->setVelocity(-target_velocity);
-            } else {
-                gripper->setVelocity(0.0f);
+                vel_command = -target_velocity;
             }
+            desired_gripper_vel.store(vel_command);
 
-            gripper->controlLoopCallback();
-            GripperState gripper_state = gripper->getLatestState();
+            float remote_torque = remote_gripper_torque.load();
 
-            local_smoothed_torque = (alpha * gripper_state.torque) + ((1.0f - alpha) * local_smoothed_torque);
+            local_smoothed_torque = (alpha * remote_torque) + ((1.0f - alpha) * local_smoothed_torque);
             if (local_smoothed_torque > minStiffness) {
                 float dynamicStiffness =
                     local_smoothed_torque * torque_scaling * (maxStiffness - minStiffness) + minStiffness;
@@ -195,14 +199,12 @@ class Leader : public barrett::systems::System {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
 
-        gripper->setVelocity(0.0f);
         hw->setTriggerHaptics(0);
     }
 
   private:
     DISALLOW_COPY_AND_ASSIGN(Leader);
     haptic_wrist::HapticWrist* hw;
-    MagnumGripper* gripper;
     std::mutex state_mutex;
     jp_type joint_positions;
     UDPHandler<DOF + 3> udp_handler;

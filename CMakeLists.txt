@@ -44,7 +44,7 @@ find_package(Boost REQUIRED COMPONENTS system thread)
 if (BUILD_LEADER) 
     find_package(haptic_wrist 2.0 REQUIRED)
     add_executable(leader src/leader.cpp src/udp_handler.cpp)
-    target_link_libraries(leader ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist gripper::gripper Boost::system Boost::thread)
+    target_link_libraries(leader ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist Boost::system Boost::thread)
     target_compile_definitions(leader PRIVATE BUILD_LEADER)
     add_dependencies(leader ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 endif()
@@ -56,5 +56,5 @@ add_dependencies(follower ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_
 
 
 add_executable(test_handle src/test_handle_gripper.cpp)
-target_link_libraries(test_handle ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist Boost::system Boost::thread)
+target_link_libraries(test_handle ${BARRETT_LIBRARIES} ${catkin_LIBRARIES} haptic_wrist gripper::gripper Boost::system Boost::thread)
 add_dependencies(leader ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

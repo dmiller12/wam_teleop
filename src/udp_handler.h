@@ -15,6 +15,7 @@ public:
 
     struct ReceivedData {
         jp_type jp;
+        float gripper_data; // leader sends desired velocity and follower sends current torque
         std::chrono::steady_clock::time_point timestamp;
     };
 
@@ -23,7 +24,7 @@ public:
 
     void stop();
     boost::optional<ReceivedData> getLatestReceived();
-    void send(const jp_type& jp);
+    void send(const jp_type& jp, float gripper_data);
 
 private:
     std::string remote_host;
@@ -39,6 +40,8 @@ private:
     std::condition_variable send_condition;
 
     jp_type pending_send_jp;
+    float pending_gripper_data = 0.0f;
+    
     boost::optional<ReceivedData> latest_received;
     bool new_data_available = false;
 

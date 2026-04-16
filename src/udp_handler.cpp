@@ -49,8 +49,9 @@ boost::optional<typename UDPHandler<DOF>::ReceivedData> UDPHandler<DOF>::getLate
 template <size_t DOF>
 void UDPHandler<DOF>::receiveLoop() {
     boost::asio::ip::udp::endpoint sender_endpoint;
-    jp_type received_jp;
-    char buffer[sizeof(double) * DOF];
+    // Exact size: DOF * 8 bytes (double) + 4 bytes (float)
+    const size_t PACKET_SIZE = sizeof(double) * DOF + sizeof(float);
+    char buffer[PACKET_SIZE];
 
     while (!stop_threads) {
         boost::system::error_code ec;
@@ -59,20 +60,25 @@ void UDPHandler<DOF>::receiveLoop() {
         if (ec == boost::asio::error::operation_aborted || len != sizeof(buffer))
             continue;
 
+        jp_type received_jp;
+        float received_gripper;
+
         std::memcpy(received_jp.data(), buffer, sizeof(double) * DOF);
+        std::memcpy(&received_gripper, buffer + sizeof(double) * DOF, sizeof(float));
         {
             std::lock_guard<std::mutex> lock(state_mutex);
-            latest_received = ReceivedData{received_jp, std::chrono::steady_clock::now()};
+            latest_received = ReceivedData{received_jp, received_gripper, std::chrono::steady_clock::now()};
         }
     }
     recv_socket.close();
 }
 
 template <size_t DOF>
-void UDPHandler<DOF>::send(const jp_type& jp) {
+void UDPHandler<DOF>::send(const jp_type& jp, float gripper_data) {
     {
         std::lock_guard<std::mutex> lock(send_mutex);
         pending_send_jp = jp;
+        pending_gripper_data = gripper_data;
         new_data_available = true;
     }
     send_condition.notify_one();
@@ -81,6 +87,7 @@ void UDPHandler<DOF>::send(const jp_type& jp) {
 template <size_t DOF>
 void UDPHandler<DOF>::sendLoop() {
     boost::asio::ip::udp::endpoint remote_endpoint(boost::asio::ip::make_address(remote_host), send_port);
+    const size_t PACKET_SIZE = sizeof(double) * DOF + sizeof(float);
 
     while (!stop_threads) {
         std::unique_lock<std::mutex> lock(send_mutex);
@@ -91,11 +98,13 @@ void UDPHandler<DOF>::sendLoop() {
 
         new_data_available = false;
         jp_type data_to_send_jp = pending_send_jp;
+        float data_to_send_gripper = pending_gripper_data;
         lock.unlock();
 
-        char buffer[sizeof(double) * DOF];
+        char buffer[PACKET_SIZE];
         std::memcpy(buffer, data_to_send_jp.data(), sizeof(double) * DOF);
-
+        std::memcpy(buffer + sizeof(double) * DOF, &data_to_send_gripper, sizeof(float));
+        
         boost::system::error_code ec;
         send_socket.send_to(boost::asio::buffer(buffer, sizeof(buffer)), remote_endpoint, 0, ec);
     }
