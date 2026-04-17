@@ -1,18 +1,18 @@
 #include "haptic_wrist/haptic_wrist.h"
-#include "gripper/magnum_opus/magnum_gripper.h"
+#include "gripper/gecko/gecko_gripper.h"
 #include <iostream>
 #include <thread>
 #include <boost/optional.hpp>
 
-using namespace gripper::magnum_opus;
+using namespace gripper::gecko;
 
 int main(int argc, char** argv) {
     haptic_wrist::HapticWrist hw;
-    MagnumGripper gripper;
+    GeckoGripper gripper;
     std::cout << "starting gripper and handle test" << std::endl;
 
     if (!gripper.initialize()) {
-        std::cerr << "ERROR: Failed to initialize Magnum Gripper." << std::endl;
+        std::cerr << "ERROR: Failed to initialize Gecko Gripper." << std::endl;
         return -1;
     }
 
